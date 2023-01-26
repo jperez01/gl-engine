@@ -2,6 +2,8 @@ add_executable(gl_engine
     main.cpp
     engine/gl_engine.h
     engine/gl_engine.cpp
+    engine/gl_funcs.h
+    engine/gl_funcs.cpp
     utils/camera.h
     utils/camera.cpp
     utils/gl_model.h

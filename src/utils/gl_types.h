@@ -51,3 +51,7 @@ struct Mesh {
 
     unsigned int VAO, VBO, EBO;
 };
+
+struct AllocatedBuffer {
+    unsigned int VAO, VBO, EBO;
+};

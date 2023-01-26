@@ -1,6 +1,8 @@
 #include "gl_engine.h"
+#include "gl_funcs.h"
 
 #include <iostream>
+#include <iterator>
 #include <SDL.h>
 #include <thread>
 #include <future>
@@ -61,6 +63,57 @@ void GLEngine::init() {
 void GLEngine::init_resources() {
     camera = Camera(glm::vec3(0.0f, 0.0f, 3.0f));
     pipeline = Shader("../../shaders/model.vs", "../../shaders/model.fs");
+    mapPipeline = Shader("../../shaders/cubemap/map.vs", "../../shaders/cubemap/map.fs");
+
+    float skyboxVertices[] = {
+        // positions          
+        -1.0f,  1.0f, -1.0f,
+        -1.0f, -1.0f, -1.0f,
+        1.0f, -1.0f, -1.0f,
+        1.0f, -1.0f, -1.0f,
+        1.0f,  1.0f, -1.0f,
+        -1.0f,  1.0f, -1.0f,
+
+        -1.0f, -1.0f,  1.0f,
+        -1.0f, -1.0f, -1.0f,
+        -1.0f,  1.0f, -1.0f,
+        -1.0f,  1.0f, -1.0f,
+        -1.0f,  1.0f,  1.0f,
+        -1.0f, -1.0f,  1.0f,
+
+        1.0f, -1.0f, -1.0f,
+        1.0f, -1.0f,  1.0f,
+        1.0f,  1.0f,  1.0f,
+        1.0f,  1.0f,  1.0f,
+        1.0f,  1.0f, -1.0f,
+        1.0f, -1.0f, -1.0f,
+
+        -1.0f, -1.0f,  1.0f,
+        -1.0f,  1.0f,  1.0f,
+        1.0f,  1.0f,  1.0f,
+        1.0f,  1.0f,  1.0f,
+        1.0f, -1.0f,  1.0f,
+        -1.0f, -1.0f,  1.0f,
+
+        -1.0f,  1.0f, -1.0f,
+        1.0f,  1.0f, -1.0f,
+        1.0f,  1.0f,  1.0f,
+        1.0f,  1.0f,  1.0f,
+        -1.0f,  1.0f,  1.0f,
+        -1.0f,  1.0f, -1.0f,
+
+        -1.0f, -1.0f, -1.0f,
+        -1.0f, -1.0f,  1.0f,
+        1.0f, -1.0f, -1.0f,
+        1.0f, -1.0f, -1.0f,
+        -1.0f, -1.0f,  1.0f,
+        1.0f, -1.0f,  1.0f
+    };
+    std::vector<float> newSkyboxVertices(std::begin(skyboxVertices), std::end(skyboxVertices));
+    cubemapBuffer = glutil::loadSimpleVertexBuffer(newSkyboxVertices);
+
+    std::string cubemapPath = "../../resources/textures/skybox/";
+    cubemapTexture = glutil::loadCubemap(cubemapPath);
 
     directionLight.ambient = glm::vec3(0.05f, 0.05f, 0.05f);
     directionLight.specular = glm::vec3(0.5f, 0.5f, 0.5f);
@@ -257,6 +310,17 @@ void GLEngine::run() {
                 glBindVertexArray(0);
             }
         }
+
+        glDepthFunc(GL_LEQUAL);
+        glm::mat4 convertedView = glm::mat4(glm::mat3(view));
+        mapPipeline.use();
+        mapPipeline.setMat4("projection", projection);
+        mapPipeline.setMat4("view", convertedView);
+
+        glBindVertexArray(cubemapBuffer.VAO);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
+        glDrawArrays(GL_TRIANGLES, 0, 36);
+        glDepthFunc(GL_LESS);
 
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());

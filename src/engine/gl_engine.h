@@ -32,7 +32,12 @@ class GLEngine {
         std::vector<Model> importedObjs;
         std::vector<Model> usableObjs;
         Camera camera;
+
+        AllocatedBuffer cubemapBuffer;
+        unsigned int cubemapTexture;
+
         Shader pipeline;
+        Shader mapPipeline;
 
         PointLight pointLights[4];
         DirLight directionLight;
