@@ -33,11 +33,20 @@ class GLEngine {
         std::vector<Model> usableObjs;
         Camera camera;
 
+        AllocatedBuffer planeBuffer;
+        unsigned int planeTexture;
+
         AllocatedBuffer cubemapBuffer;
         unsigned int cubemapTexture;
 
+        AllocatedBuffer quadBuffer;
+        
+        unsigned int depthFBO;
+        unsigned int depthMap;
+
         Shader pipeline;
         Shader mapPipeline;
+        Shader shadowmapPipeline;
 
         PointLight pointLights[4];
         DirLight directionLight;
@@ -48,6 +57,9 @@ class GLEngine {
         void async_load_model(std::string path);
 
         void loadModelData(Model& model);
+
+        void drawModels(Shader& shader, bool skipTextures = false);
+        void drawPlane();
 };
 
 void framebuffer_callback(int width, int height);

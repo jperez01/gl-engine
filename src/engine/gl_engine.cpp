@@ -41,8 +41,6 @@ void GLEngine::init() {
     SDL_GL_MakeCurrent(window, gl_context);
     gladLoadGLLoader(SDL_GL_GetProcAddress);
 
-    stbi_set_flip_vertically_on_load(true);
-
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO(); (void)io;
@@ -61,9 +59,36 @@ void GLEngine::init() {
 }
 
 void GLEngine::init_resources() {
-    camera = Camera(glm::vec3(0.0f, 0.0f, 3.0f));
+    camera = Camera(glm::vec3(0.0f, 0.0f, 7.0f));
+    
     pipeline = Shader("../../shaders/model.vs", "../../shaders/model.fs");
     mapPipeline = Shader("../../shaders/cubemap/map.vs", "../../shaders/cubemap/map.fs");
+    shadowmapPipeline = Shader("../../shaders/shadows/map.vs", "../../shaders/shadows/map.fs");
+    
+    Model newModel("../../resources/objects/backpack/backpack.obj");
+    loadModelData(newModel);
+    usableObjs.push_back(newModel);
+
+    glCreateFramebuffers(1, &depthFBO);
+    glCreateTextures(GL_TEXTURE_2D, 1, &depthMap);
+    glTextureStorage2D(depthMap, 1, GL_DEPTH_COMPONENT32F, 2048, 2048);
+    glNamedFramebufferTexture(depthFBO, GL_DEPTH_ATTACHMENT, depthMap, 0);
+    glNamedFramebufferDrawBuffer(depthFBO, GL_NONE);
+    glNamedFramebufferReadBuffer(depthFBO, GL_NONE);
+
+    float planeVertices[] = {
+        // positions            // normals         // texcoords
+         25.0f, -0.5f,  25.0f,  0.0f, 1.0f, 0.0f,  25.0f,  0.0f,
+        -25.0f, -0.5f,  25.0f,  0.0f, 1.0f, 0.0f,   0.0f,  0.0f,
+        -25.0f, -0.5f, -25.0f,  0.0f, 1.0f, 0.0f,   0.0f, 25.0f,
+
+         25.0f, -0.5f,  25.0f,  0.0f, 1.0f, 0.0f,  25.0f,  0.0f,
+        -25.0f, -0.5f, -25.0f,  0.0f, 1.0f, 0.0f,   0.0f, 25.0f,
+         25.0f, -0.5f, -25.0f,  0.0f, 1.0f, 0.0f,  25.0f, 25.0f
+    };
+    std::vector<float> newPlaneVertices(std::begin(planeVertices), std::end(planeVertices));
+    planeBuffer = glutil::loadOldSimpleVertexBuffer(newPlaneVertices, glutil::WITH_TEXCOORDS);
+    planeTexture = glutil::loadTexture("../../resources/textures/wood.png");
 
     float skyboxVertices[] = {
         // positions          
@@ -110,7 +135,17 @@ void GLEngine::init_resources() {
         1.0f, -1.0f,  1.0f
     };
     std::vector<float> newSkyboxVertices(std::begin(skyboxVertices), std::end(skyboxVertices));
-    cubemapBuffer = glutil::loadSimpleVertexBuffer(newSkyboxVertices);
+    cubemapBuffer = glutil::loadOldSimpleVertexBuffer(newSkyboxVertices);
+
+    float quadVertices[] = {
+        // positions        // texture Coords
+        -1.0f,  1.0f, 0.0f, 0.0f, 1.0f,
+        -1.0f, -1.0f, 0.0f, 0.0f, 0.0f,
+            1.0f,  1.0f, 0.0f, 1.0f, 1.0f,
+            1.0f, -1.0f, 0.0f, 1.0f, 0.0f,
+    };
+    std::vector<float> newQuadVertices(std::begin(quadVertices), std::end(quadVertices));
+    quadBuffer = glutil::loadOldSimpleVertexBuffer(newQuadVertices, glutil::WITH_TEXCOORDS);
 
     std::string cubemapPath = "../../resources/textures/skybox/";
     cubemapTexture = glutil::loadCubemap(cubemapPath);
@@ -121,7 +156,7 @@ void GLEngine::init_resources() {
     directionLight.direction = glm::vec3(-0.2f, -1.0f, -0.3f);
 
     glm::vec3 pointLightPositions[] = {
-        glm::vec3( 0.7f,  0.2f,  2.0f),
+        glm::vec3( 0.7f,  2.0f,  5.0f),
         glm::vec3( 2.3f, -3.3f, -4.0f),
         glm::vec3(-4.0f,  2.0f, -12.0f),
         glm::vec3( 0.0f,  0.0f, -3.0f)
@@ -180,6 +215,32 @@ void GLEngine::run() {
         glClearColor(1.0, 0.0, 0.0, 1.0);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
+        glm::mat4 lightProjection, lightView, lightSpaceMatrix;
+        float near = 1.0f, far = 7.5f;
+        glm::vec3 someLightPos(-2.0f, 4.0f, -1.0f);
+        lightProjection = glm::ortho(-10.0f, 10.0f, -10.0f, 10.0f, near, far);
+        lightView = glm::lookAt(pointLights[0].position, glm::vec3(0.0f), glm::vec3(0.0, 1.0, 0.0));
+        lightSpaceMatrix = lightProjection * lightView;
+
+        shadowmapPipeline.use();
+        shadowmapPipeline.setMat4("lightSpaceMatrix", lightSpaceMatrix);
+
+        glViewport(0, 0, 2048, 2048);
+        glBindFramebuffer(GL_FRAMEBUFFER, depthFBO);
+        glClear(GL_DEPTH_BUFFER_BIT);
+        drawModels(shadowmapPipeline, true);
+
+        glm::mat4 planeModel = glm::mat4(1.0f);
+        planeModel = glm::translate(planeModel, glm::vec3(0.0, -2.0, 0.0));
+        shadowmapPipeline.setMat4("model", planeModel);
+        glBindVertexArray(planeBuffer.VAO);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplSDL2_NewFrame();
         ImGui::NewFrame();
@@ -209,7 +270,8 @@ void GLEngine::run() {
         if (ImGui::CollapsingHeader("Models")) {
             ImGui::InputText("Model Path", &path);
             if (ImGui::Button("Load Model")) {
-                std::thread(&GLEngine::async_load_model, this, path).detach();
+                std::string chosenPath = "../../resources/objects/" + path;
+                std::thread(&GLEngine::async_load_model, this, chosenPath).detach();
             }
 
             if (usableObjs.size() != 0) {
@@ -222,7 +284,7 @@ void GLEngine::run() {
                 }
                 ImGui::ListBoxFooter();
 
-                if (ImGui::SliderFloat3("Translation", (float*)&translate, -100.0, 100.0)
+                if (ImGui::SliderFloat3("Translation", (float*)&translate, -10.0, 10.0)
                     || ImGui::SliderFloat3("Rotation", (float*)&rotation, 0.0, 90.0)
                     || ImGui::SliderFloat3("Scale", (float*)&scale, 1.0, 10.0)) {
                     glm::mat4 transformation = glm::mat4(1.0f);
@@ -238,8 +300,6 @@ void GLEngine::run() {
             ImGui::SliderFloat("Shininess", &shininess, 1, 200);
         }
         ImGui::End();
-
-        ImGui::ShowDemoWindow();
 
         if (importedObjs.size() != 0) {
             Model model = importedObjs[0];
@@ -274,10 +334,45 @@ void GLEngine::run() {
 
         pipeline.setVec3("viewPos", camera.Position);
 
-        for (Model& model : usableObjs) {
-            pipeline.setMat4("model", model.model_matrix);
+        glActiveTexture(GL_TEXTURE3);
+        glBindTexture(GL_TEXTURE_2D, depthMap);
+        pipeline.setInt("shadowMap", 3);
+        pipeline.setMat4("lightSpaceMatrix", lightSpaceMatrix);
 
-            for (Mesh& mesh : model.meshes) {
+        drawModels(pipeline);
+
+        pipeline.setMat4("model", planeModel);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, planeTexture);
+        pipeline.setInt("diffuseTexture", 0);
+        pipeline.setInt("shadowMap", 3);
+        glBindVertexArray(planeBuffer.VAO);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+
+        glDepthFunc(GL_LEQUAL);
+        glm::mat4 convertedView = glm::mat4(glm::mat3(view));
+        mapPipeline.use();
+        mapPipeline.setMat4("projection", projection);
+        mapPipeline.setMat4("view", convertedView);
+
+        glBindVertexArray(cubemapBuffer.VAO);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
+        glDrawArrays(GL_TRIANGLES, 0, 36);
+        glDepthFunc(GL_LESS);
+
+        ImGui::Render();
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+        SDL_GL_SwapWindow(window);
+    }
+}
+
+void GLEngine::drawModels(Shader& shader, bool skipTextures) {
+    for (Model& model : usableObjs) {
+        shader.setMat4("model", model.model_matrix);
+
+        for (Mesh& mesh : model.meshes) {
+            if (!skipTextures) {
                 unsigned int diffuseNr = 1;
                 unsigned int specularNr = 1;
                 unsigned int normalNr = 1;
@@ -299,33 +394,17 @@ void GLEngine::run() {
                         number = std::to_string(heightNr++);
 
                     string key = name + number;
-                    pipeline.setInt(key.c_str(), i);
+                    shader.setInt(key.c_str(), i);
 
                     glBindTexture(GL_TEXTURE_2D, mesh.textures[i].id);
                 }
                 glActiveTexture(GL_TEXTURE0);
-
-                glBindVertexArray(mesh.VAO);
-                glDrawElements(GL_TRIANGLES, mesh.indices.size(), GL_UNSIGNED_INT, 0);
-                glBindVertexArray(0);
             }
+
+            glBindVertexArray(mesh.VAO);
+            glDrawElements(GL_TRIANGLES, mesh.indices.size(), GL_UNSIGNED_INT, 0);
+            glBindVertexArray(0);
         }
-
-        glDepthFunc(GL_LEQUAL);
-        glm::mat4 convertedView = glm::mat4(glm::mat3(view));
-        mapPipeline.use();
-        mapPipeline.setMat4("projection", projection);
-        mapPipeline.setMat4("view", convertedView);
-
-        glBindVertexArray(cubemapBuffer.VAO);
-        glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
-        glDrawArrays(GL_TRIANGLES, 0, 36);
-        glDepthFunc(GL_LESS);
-
-        ImGui::Render();
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-
-        SDL_GL_SwapWindow(window);
     }
 }
 
@@ -379,36 +458,31 @@ void GLEngine::loadModelData(Model& model) {
     for (Mesh& mesh : model.meshes) {
         GLuint binding_index = 0;
 
-        glCreateBuffers(1, &mesh.VBO);
-        glNamedBufferStorage(mesh.VBO, sizeof(Vertex) * mesh.vertices.size(), mesh.vertices.data(), GL_DYNAMIC_STORAGE_BIT);
-
-        glCreateBuffers(1, &mesh.EBO);
-        glNamedBufferStorage(mesh.EBO, sizeof(unsigned int) * mesh.indices.size(), mesh.indices.data(), GL_DYNAMIC_STORAGE_BIT);
-
         glCreateVertexArrays(1, &mesh.VAO);
+        glCreateBuffers(1, &mesh.EBO);
+        glCreateBuffers(1, &mesh.VBO);
 
-        glEnableVertexArrayAttrib(mesh.VAO, 0);
-        glVertexArrayAttribFormat(mesh.VAO, 0, 3, GL_FLOAT, GL_FALSE, 0);
-        glVertexArrayAttribBinding(mesh.VAO, 0, binding_index);
-
-        glEnableVertexArrayAttrib(mesh.VAO, 1);
-        glVertexArrayAttribFormat(mesh.VAO, 1, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, Normal));
-        glVertexArrayAttribBinding(mesh.VAO, 1, binding_index);
-
-        glEnableVertexArrayAttrib(mesh.VAO, 2);
-        glVertexArrayAttribFormat(mesh.VAO, 2, 2, GL_FLOAT, GL_FALSE, offsetof(Vertex, TexCoords));
-        glVertexArrayAttribBinding(mesh.VAO, 2, binding_index);
-
-        glEnableVertexArrayAttrib(mesh.VAO, 3);
-        glVertexArrayAttribFormat(mesh.VAO, 3, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, Tangent));
-        glVertexArrayAttribBinding(mesh.VAO, 3, binding_index);
-
-        glEnableVertexArrayAttrib(mesh.VAO, 4);
-        glVertexArrayAttribFormat(mesh.VAO, 4, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, Bitangent));
-        glVertexArrayAttribBinding(mesh.VAO, 4, binding_index);
-
-        glVertexArrayVertexBuffer(mesh.VAO, binding_index, mesh.VBO, 0, sizeof(Vertex));
+        glNamedBufferStorage(mesh.VBO, sizeof(Vertex) * mesh.vertices.size(), mesh.vertices.data(), GL_DYNAMIC_STORAGE_BIT);
+        glNamedBufferStorage(mesh.EBO, mesh.indices.size() * sizeof(unsigned int), mesh.indices.data(), GL_DYNAMIC_STORAGE_BIT);
+        
+        glBindVertexArray(mesh.VAO);
+        glBindBuffer(GL_ARRAY_BUFFER, mesh.VBO);
         glVertexArrayElementBuffer(mesh.VAO, mesh.EBO);
+
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
+
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*) offsetof(Vertex, Normal));
+
+        glEnableVertexAttribArray(2);
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*) offsetof(Vertex, TexCoords));
+        // vertex tangent
+        glEnableVertexAttribArray(3);
+        glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Tangent));
+        // vertex bitangent
+        glEnableVertexAttribArray(4);
+        glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Bitangent));
 
         for (std::string& path : mesh.texture_paths) {
             for (unsigned int j = 0; j < model.textures_loaded.size(); j++) {

@@ -3,12 +3,60 @@
 
 #include <glad/glad.h>
 #include <iostream>
+#include <utility>
 
 namespace glutil {
+    unsigned int loadTexture(std::string path) {
+        int width, height, nrComponents;
+
+        unsigned char *data = stbi_load(path.c_str(), &width, &height, &nrComponents, 0);
+        if (data) {
+            GLenum dataType = GL_UNSIGNED_BYTE;
+            unsigned int textureID = createTexture(width, height, dataType, nrComponents, data);
+            return textureID;
+        } else {
+            std::cout << "Texture failed to load at path: " << path << std::endl;
+            stbi_image_free(data);
+
+            return 0;
+        }
+    }
+
+    unsigned int createTexture(int width, int height, GLenum dataType, int nrComponents, unsigned char* data) {
+        unsigned int textureID;
+        glCreateTextures(GL_TEXTURE_2D, 1, &textureID);
+
+        GLenum format;
+        GLenum storageFormat;
+        if (nrComponents == 0) {
+            format = GL_DEPTH_COMPONENT;
+            storageFormat = GL_DEPTH_COMPONENT;
+        } else if (nrComponents == 1) {
+            format = GL_RED;
+            storageFormat = GL_R8;
+        } else if (nrComponents == 3) {
+            format = GL_RGB;
+            storageFormat = GL_RGB8;
+        } else if (nrComponents == 4) {
+            format = GL_RGBA;
+            storageFormat = GL_RGBA8;
+        }
+
+        glTextureStorage2D(textureID, 1, storageFormat, width, height);
+        glTextureSubImage2D(textureID, 0, 0, 0, width, height, format, dataType, data);
+
+        glTextureParameteri(textureID, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTextureParameteri(textureID, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTextureParameteri(textureID, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTextureParameteri(textureID, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+        return textureID;
+    }
+
     unsigned int loadCubemap(std::string path, std::vector<std::string> faces) {
         unsigned int textureID;
         
-        glCreateTextures(GL_TEXTURE_CUBE_MAP, 1, &textureID);
+        glGenTextures(1, &textureID);
         glBindTexture(GL_TEXTURE_CUBE_MAP, textureID);
 
         int width, height, nrChannels;
@@ -32,17 +80,6 @@ namespace glutil {
                     storageFormat = GL_RGBA8;
                 }
 
-                /** 
-                 * if (i == 0) glTextureStorage2D(textureID, 1, storageFormat, width, height);
-                glTextureSubImage3D(textureID, 0, 0, 0, i, width, height, 1, format, GL_UNSIGNED_BYTE, data);
-                glGenerateTextureMipmap(textureID);
-
-                glTextureParameteri(textureID, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-                glTextureParameteri(textureID, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-                glTextureParameteri(textureID, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
-                glTextureParameteri(textureID, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-                glTextureParameteri(textureID, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-                **/
                glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, storageFormat, width, height, 0, format,
                 GL_UNSIGNED_BYTE, data);
 
@@ -105,20 +142,100 @@ namespace glutil {
         return newBuffer;
     }
 
-    AllocatedBuffer loadSimpleVertexBuffer(std::vector<float>& vertices) {
+    AllocatedBuffer loadSimpleVertexBuffer(std::vector<float>& vertices, VertexType endpoint) {
+        int lengths[5] = { 3, 3, 2, 3, 3};
+
         GLuint binding_index = 0;
         unsigned int VAO, VBO;
+
+        glCreateVertexArrays(1, &VAO);
 
         glCreateBuffers(1, &VBO);
         glNamedBufferStorage(VBO, sizeof(float) * vertices.size(), vertices.data(), GL_DYNAMIC_STORAGE_BIT);
 
+        int totalLength = 0;
+        for (int i = 0; i <= endpoint; i++) {
+            glEnableVertexArrayAttrib(VAO, i);
+            glVertexArrayAttribFormat(VAO, i, lengths[i], GL_FLOAT, GL_FALSE, 0);
+            glVertexArrayAttribBinding(VAO, i, binding_index);
+
+            totalLength += lengths[i];
+        }
+
+        glVertexArrayVertexBuffer(VAO, binding_index, VBO, 0, sizeof(float) * totalLength);
+
+        AllocatedBuffer newBuffer;
+        newBuffer.VAO = VAO;
+        newBuffer.VBO = VBO;
+
+        return newBuffer;
+    }
+
+    AllocatedBuffer loadOldVertexBuffer(std::vector<Vertex>& vertices, std::vector<unsigned int>& indices) {
+        GLuint binding_index = 0;
+        unsigned int VAO, EBO, VBO;
+
+        glCreateBuffers(1, &VBO);
+        glNamedBufferStorage(VBO, sizeof(Vertex) * vertices.size(), vertices.data(), GL_DYNAMIC_STORAGE_BIT);
+
+        glCreateBuffers(1, &EBO);
+        glNamedBufferStorage(EBO, sizeof(unsigned int) * indices.size(), indices.data(), GL_DYNAMIC_STORAGE_BIT);
+
         glCreateVertexArrays(1, &VAO);
 
-        glEnableVertexArrayAttrib(VAO, 0);
-        glVertexArrayAttribFormat(VAO, 0, 3, GL_FLOAT, GL_FALSE, 0);
-        glVertexArrayAttribBinding(VAO, 0, binding_index);
+        glBindVertexArray(VAO);
+        glBindBuffer(GL_ARRAY_BUFFER, VBO);
 
-        glVertexArrayVertexBuffer(VAO, binding_index, VBO, 0, sizeof(float) * 3);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
+
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*) offsetof(Vertex, Normal));
+
+        glEnableVertexAttribArray(2);
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*) offsetof(Vertex, TexCoords));
+        // vertex tangent
+        glEnableVertexAttribArray(3);
+        glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Tangent));
+        // vertex bitangent
+        glEnableVertexAttribArray(4);
+        glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Bitangent));
+
+        glVertexArrayElementBuffer(VAO, EBO);
+
+        AllocatedBuffer newBuffer;
+        newBuffer.VAO = VAO;
+        newBuffer.EBO = EBO;
+        newBuffer.VBO = VBO;
+
+        return newBuffer;
+    }
+    AllocatedBuffer loadOldSimpleVertexBuffer(std::vector<float>& vertices, VertexType endpoint) {
+        int lengths[5] = { 3, 3, 2, 3, 3};
+
+        GLuint binding_index = 0;
+        unsigned int VAO, VBO;
+
+        glCreateVertexArrays(1, &VAO);
+
+        glCreateBuffers(1, &VBO);
+        glNamedBufferStorage(VBO, sizeof(float) * vertices.size(), vertices.data(), GL_DYNAMIC_STORAGE_BIT);
+
+        glBindVertexArray(VAO);
+        glBindBuffer(GL_ARRAY_BUFFER, VBO);
+
+        int totalLength = 0;
+        for (int i = 0; i <= endpoint; i++) {
+            totalLength += lengths[i];
+        }
+
+        int currentOffset = 0;
+        for (int i = 0; i <= endpoint; i++) {
+            glEnableVertexAttribArray(i);
+            glVertexAttribPointer(i, lengths[i], GL_FLOAT, GL_FALSE, sizeof(float) * totalLength, (void*) (currentOffset * sizeof(float)));
+
+            currentOffset += lengths[i];
+        }
 
         AllocatedBuffer newBuffer;
         newBuffer.VAO = VAO;
