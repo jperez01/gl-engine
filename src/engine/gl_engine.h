@@ -44,9 +44,13 @@ class GLEngine {
         unsigned int depthFBO;
         unsigned int depthMap;
 
+        unsigned int depthCubemaps[4];
+        int shadowHeight = 2048, shadowWidth = 2048;
+
         Shader pipeline;
         Shader mapPipeline;
         Shader shadowmapPipeline;
+        Shader depthCubemapPipeline;
 
         PointLight pointLights[4];
         DirLight directionLight;

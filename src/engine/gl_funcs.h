@@ -20,6 +20,8 @@ namespace glutil {
 
     unsigned int loadTexture(std::string path);
     unsigned int createTexture(int width, int height, GLenum dataType, int nrComponents = 0, unsigned char* data = nullptr);
+
+    unsigned int createCubemap(int width, int height, GLenum dataType, int nrComponents = 0);
     unsigned int loadCubemap(std::string path, std::vector<std::string> faces = defaultFaces);
 
     AllocatedBuffer loadVertexBuffer(std::vector<Vertex>& vertices, std::vector<unsigned int>& indices);

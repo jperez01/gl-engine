@@ -40,6 +40,7 @@ void GLEngine::init() {
     gl_context = SDL_GL_CreateContext(window);
     SDL_GL_MakeCurrent(window, gl_context);
     gladLoadGLLoader(SDL_GL_GetProcAddress);
+    SDL_GL_SetSwapInterval(1);
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -61,13 +62,19 @@ void GLEngine::init() {
 void GLEngine::init_resources() {
     camera = Camera(glm::vec3(0.0f, 0.0f, 7.0f));
     
-    pipeline = Shader("../../shaders/model.vs", "../../shaders/model.fs");
+    pipeline = Shader("../../shaders/shadowPoints/model.vs", "../../shaders/shadowPoints/model.fs");
     mapPipeline = Shader("../../shaders/cubemap/map.vs", "../../shaders/cubemap/map.fs");
     shadowmapPipeline = Shader("../../shaders/shadows/map.vs", "../../shaders/shadows/map.fs");
+    depthCubemapPipeline = Shader("../../shaders/shadowPoints/map.vs", "../../shaders/shadowPoints/map.fs",
+        "../../shaders/shadowPoints/map.gs");
     
     Model newModel("../../resources/objects/backpack/backpack.obj");
     loadModelData(newModel);
     usableObjs.push_back(newModel);
+
+    for (int i = 0; i < 4; i++) {
+        depthCubemaps[i] = glutil::createCubemap(2048, 2048, GL_FLOAT, 0);
+    }
 
     glCreateFramebuffers(1, &depthFBO);
     glCreateTextures(GL_TEXTURE_2D, 1, &depthMap);
@@ -215,26 +222,74 @@ void GLEngine::run() {
         glClearColor(1.0, 0.0, 0.0, 1.0);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
-        glm::mat4 lightProjection, lightView, lightSpaceMatrix;
-        float near = 1.0f, far = 7.5f;
-        glm::vec3 someLightPos(-2.0f, 4.0f, -1.0f);
-        lightProjection = glm::ortho(-10.0f, 10.0f, -10.0f, 10.0f, near, far);
-        lightView = glm::lookAt(pointLights[0].position, glm::vec3(0.0f), glm::vec3(0.0, 1.0, 0.0));
-        lightSpaceMatrix = lightProjection * lightView;
-
-        shadowmapPipeline.use();
-        shadowmapPipeline.setMat4("lightSpaceMatrix", lightSpaceMatrix);
-
         glViewport(0, 0, 2048, 2048);
         glBindFramebuffer(GL_FRAMEBUFFER, depthFBO);
-        glClear(GL_DEPTH_BUFFER_BIT);
-        drawModels(shadowmapPipeline, true);
 
+        float aspect = (float)shadowWidth / (float)shadowHeight;
+        float near = 1.0f;
+        float far = 25.0f;
+        glm::mat4 shadowProj = glm::perspective(glm::radians(90.0f), aspect, near, far);
         glm::mat4 planeModel = glm::mat4(1.0f);
         planeModel = glm::translate(planeModel, glm::vec3(0.0, -2.0, 0.0));
-        shadowmapPipeline.setMat4("model", planeModel);
-        glBindVertexArray(planeBuffer.VAO);
-        glDrawArrays(GL_TRIANGLES, 0, 6);
+
+        depthCubemapPipeline.use();
+
+        for (int i = 0; i < 4; i++) {
+            glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, depthCubemaps[i], 0);
+            glClear(GL_DEPTH_BUFFER_BIT);
+
+            glm::vec3 lightPos = pointLights[i].position;
+            std::vector<glm::mat4> shadowTransforms;
+            shadowTransforms.push_back(shadowProj * 
+                 glm::lookAt(lightPos, lightPos + glm::vec3( 1.0, 0.0, 0.0), glm::vec3(0.0,-1.0, 0.0)));
+            shadowTransforms.push_back(shadowProj * 
+                 glm::lookAt(lightPos, lightPos + glm::vec3(-1.0, 0.0, 0.0), glm::vec3(0.0,-1.0, 0.0)));
+            shadowTransforms.push_back(shadowProj * 
+                 glm::lookAt(lightPos, lightPos + glm::vec3( 0.0, 1.0, 0.0), glm::vec3(0.0, 0.0, 1.0)));
+            shadowTransforms.push_back(shadowProj * 
+                 glm::lookAt(lightPos, lightPos + glm::vec3( 0.0,-1.0, 0.0), glm::vec3(0.0, 0.0,-1.0)));
+            shadowTransforms.push_back(shadowProj * 
+                 glm::lookAt(lightPos, lightPos + glm::vec3( 0.0, 0.0, 1.0), glm::vec3(0.0,-1.0, 0.0)));
+            shadowTransforms.push_back(shadowProj * 
+                glm::lookAt(lightPos, lightPos + glm::vec3( 0.0, 0.0,-1.0), glm::vec3(0.0,-1.0, 0.0)));
+
+            for (int i = 0; i < 6; i++) {
+                depthCubemapPipeline.setMat4("shadowMatrices[" + std::to_string(i)+ "]", shadowTransforms[i]);
+            }
+            depthCubemapPipeline.setVec3("lightPos", lightPos);
+            depthCubemapPipeline.setFloat("far_plane", far);
+
+            drawModels(depthCubemapPipeline, true);
+
+            depthCubemapPipeline.setMat4("model", planeModel);
+            glBindVertexArray(planeBuffer.VAO);
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+        }
+        /**
+         * @brief 
+         * 
+         *  glm::mat4 lightProjection, lightView, lightSpaceMatrix;
+            float near = 1.0f, far = 7.5f;
+            glm::vec3 someLightPos(-2.0f, 4.0f, -1.0f);
+            lightProjection = glm::ortho(-10.0f, 10.0f, -10.0f, 10.0f, near, far);
+            lightView = glm::lookAt(pointLights[0].position, glm::vec3(0.0f), glm::vec3(0.0, 1.0, 0.0));
+            lightSpaceMatrix = lightProjection * lightView;
+
+            shadowmapPipeline.use();
+            shadowmapPipeline.setMat4("lightSpaceMatrix", lightSpaceMatrix);
+
+            glViewport(0, 0, 2048, 2048);
+            glBindFramebuffer(GL_FRAMEBUFFER, depthFBO);
+
+            glClear(GL_DEPTH_BUFFER_BIT);
+            drawModels(shadowmapPipeline, true);
+
+            glm::mat4 planeModel = glm::mat4(1.0f);
+            planeModel = glm::translate(planeModel, glm::vec3(0.0, -2.0, 0.0));
+            shadowmapPipeline.setMat4("model", planeModel);
+            glBindVertexArray(planeBuffer.VAO);
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+         */
 
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
@@ -317,6 +372,7 @@ void GLEngine::run() {
         pipeline.setMat4("projection", projection);
         pipeline.setMat4("view", view);
         pipeline.setFloat("shininess", shininess);
+        pipeline.setFloat("far_plane", far);
 
         pipeline.setVec3("dirLight.direction", directionLight.direction);
         pipeline.setVec3("dirLight.ambient", directionLight.ambient);
@@ -337,7 +393,12 @@ void GLEngine::run() {
         glActiveTexture(GL_TEXTURE3);
         glBindTexture(GL_TEXTURE_2D, depthMap);
         pipeline.setInt("shadowMap", 3);
-        pipeline.setMat4("lightSpaceMatrix", lightSpaceMatrix);
+
+        for (int i = 0; i < 4; i++) {
+            glActiveTexture(GL_TEXTURE4 + i);
+            glBindTexture(GL_TEXTURE_CUBE_MAP, depthCubemaps[i]);
+            pipeline.setInt("shadowMaps[" + std::to_string(i) + "]", 4 + i);
+        }
 
         drawModels(pipeline);
 

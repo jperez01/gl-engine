@@ -53,6 +53,42 @@ namespace glutil {
         return textureID;
     }
 
+    unsigned int createCubemap(int width, int height, GLenum dataType, int nrComponents) {
+        unsigned int cubemapID;
+        
+        glGenTextures(1, &cubemapID);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapID);
+
+        GLenum format;
+        GLenum storageFormat;
+        if (nrComponents == 0) {
+            format = GL_DEPTH_COMPONENT;
+            storageFormat = GL_DEPTH_COMPONENT;
+        } else if (nrComponents == 1) {
+            format = GL_RED;
+            storageFormat = GL_R8;
+        } else if (nrComponents == 3) {
+            format = GL_RGB;
+            storageFormat = GL_RGB8;
+        } else if (nrComponents == 4) {
+            format = GL_RGBA;
+            storageFormat = GL_RGBA8;
+        }
+
+        for (int i = 0; i < 6; i++) {
+            glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, storageFormat, width, height, 0,
+                format, dataType, nullptr);
+
+            glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE); 
+        }
+
+        return cubemapID;
+    }
+
     unsigned int loadCubemap(std::string path, std::vector<std::string> faces) {
         unsigned int textureID;
         
