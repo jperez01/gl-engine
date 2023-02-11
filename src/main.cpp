@@ -1,7 +1,7 @@
 #include "engine/gl_engine.h"
 
 int main(int argc, char* argv[]) {
-    GLEngine engine;
+    RenderEngine engine;
 
     engine.init();
 

@@ -12,7 +12,8 @@ Model::Model(std::string path) {
 void Model::loadInfo(std::string path) {
     Assimp::Importer importer;
     const aiScene *scene = importer.ReadFile(path,
-        aiProcess_Triangulate | aiProcess_GenSmoothNormals | aiProcess_CalcTangentSpace);
+        aiProcess_Triangulate | aiProcess_GenSmoothNormals | aiProcess_CalcTangentSpace |
+        aiProcess_ConvertToLeftHanded);
 
     if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
         std::cout << "ERROR::ASSIMP::" << importer.GetErrorString() << std::endl;
@@ -110,6 +111,7 @@ Mesh Model::processMesh(aiMesh *mesh, const aiScene *scene) {
 std::vector<std::string> Model::loadMaterialTextures(aiMaterial *mat, aiTextureType type, 
     std::string typeName) {
     std::vector<std::string> textures;
+
     for (unsigned int i = 0; i < mat->GetTextureCount(type); i++) {
         aiString str;
         mat->GetTexture(type, i, &str);
