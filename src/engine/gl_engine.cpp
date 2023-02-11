@@ -13,7 +13,7 @@
 #include "imgui/imgui_impl_sdl.h"
 #include "imgui/imgui_stdlib.h"
 
-void GLEngine::init() {
+void RenderEngine::init() {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_GAMECONTROLLER) != 0) {
         printf("Error: %s \n", SDL_GetError());
         return;
@@ -59,7 +59,7 @@ void GLEngine::init() {
     init_resources();
 }
 
-void GLEngine::init_resources() {
+void RenderEngine::init_resources() {
     camera = Camera(glm::vec3(0.0f, 0.0f, 7.0f));
     
     pipeline = Shader("../../shaders/shadowPoints/model.vs", "../../shaders/shadowPoints/model.fs");
@@ -85,13 +85,13 @@ void GLEngine::init_resources() {
 
     float planeVertices[] = {
         // positions            // normals         // texcoords
-         25.0f, -0.5f,  25.0f,  0.0f, 1.0f, 0.0f,  25.0f,  0.0f,
+         25.0f, -0.5f,  25.0f,  0.0f, 1.0f, 0.0f,  1.0f,  0.0f,
         -25.0f, -0.5f,  25.0f,  0.0f, 1.0f, 0.0f,   0.0f,  0.0f,
-        -25.0f, -0.5f, -25.0f,  0.0f, 1.0f, 0.0f,   0.0f, 25.0f,
+        -25.0f, -0.5f, -25.0f,  0.0f, 1.0f, 0.0f,   0.0f, 1.0f,
 
-         25.0f, -0.5f,  25.0f,  0.0f, 1.0f, 0.0f,  25.0f,  0.0f,
-        -25.0f, -0.5f, -25.0f,  0.0f, 1.0f, 0.0f,   0.0f, 25.0f,
-         25.0f, -0.5f, -25.0f,  0.0f, 1.0f, 0.0f,  25.0f, 25.0f
+         25.0f, -0.5f,  25.0f,  0.0f, 1.0f, 0.0f,  1.0f,  0.0f,
+        -25.0f, -0.5f, -25.0f,  0.0f, 1.0f, 0.0f,   0.0f, 1.0f,
+         25.0f, -0.5f, -25.0f,  0.0f, 1.0f, 0.0f,  1.0f, 1.0f
     };
     std::vector<float> newPlaneVertices(std::begin(planeVertices), std::end(planeVertices));
     planeBuffer = glutil::loadOldSimpleVertexBuffer(newPlaneVertices, glutil::WITH_TEXCOORDS);
@@ -175,9 +175,14 @@ void GLEngine::init_resources() {
         pointLights[i].diffuse = glm::vec3(0.05f * i, 0.05f * i, 0.05f * i);
         pointLights[i].position = pointLightPositions[i];
     }
+
+    computePipeline = ComputeShader("../../shaders/compute/tutorial.glsl");
+
+    imgTexture = glutil::createTexture(imgWidth, imgHeight, GL_FLOAT, GL_RGBA, GL_RGBA32F, nullptr);
+    glBindImageTexture(0, imgTexture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
 }
 
-void GLEngine::run() {
+void RenderEngine::run() {
     bool closedWindow = false;
     SDL_Event event;
     float shininess = 100.0;
@@ -219,6 +224,12 @@ void GLEngine::run() {
                 framebuffer_callback(event.window.data1, event.window.data2);
             }
         }
+        glm::mat4 inverseView = glm::inverse(camera.getViewMatrix());
+        computePipeline.use();
+        computePipeline.setFloat("t", currentFrame * 0.01);
+        computePipeline.setMat4("inverseView", inverseView);
+        glDispatchCompute((unsigned int) imgWidth/8, (unsigned int) imgHeight/4, 1);
+
         glClearColor(1.0, 0.0, 0.0, 1.0);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
@@ -326,7 +337,7 @@ void GLEngine::run() {
             ImGui::InputText("Model Path", &path);
             if (ImGui::Button("Load Model")) {
                 std::string chosenPath = "../../resources/objects/" + path;
-                std::thread(&GLEngine::async_load_model, this, chosenPath).detach();
+                std::thread(&RenderEngine::async_load_model, this, chosenPath).detach();
             }
 
             if (usableObjs.size() != 0) {
@@ -402,9 +413,11 @@ void GLEngine::run() {
 
         drawModels(pipeline);
 
+        glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
         pipeline.setMat4("model", planeModel);
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, planeTexture);
+        glBindTexture(GL_TEXTURE_2D, imgTexture);
         pipeline.setInt("diffuseTexture", 0);
         pipeline.setInt("shadowMap", 3);
         glBindVertexArray(planeBuffer.VAO);
@@ -428,7 +441,7 @@ void GLEngine::run() {
     }
 }
 
-void GLEngine::drawModels(Shader& shader, bool skipTextures) {
+void RenderEngine::drawModels(Shader& shader, bool skipTextures) {
     for (Model& model : usableObjs) {
         shader.setMat4("model", model.model_matrix);
 
@@ -469,7 +482,7 @@ void GLEngine::drawModels(Shader& shader, bool skipTextures) {
     }
 }
 
-void GLEngine::cleanup() {
+void RenderEngine::cleanup() {
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplSDL2_Shutdown();
     ImGui::DestroyContext();
@@ -479,13 +492,13 @@ void GLEngine::cleanup() {
     SDL_Quit();
 }
 
-void GLEngine::async_load_model(std::string path) {
+void RenderEngine::async_load_model(std::string path) {
     Model newModel(path);
 
     importedObjs.push_back(newModel);
 }
 
-void GLEngine::loadModelData(Model& model) {
+void RenderEngine::loadModelData(Model& model) {
     for (Texture& texture : model.textures_loaded) {
         unsigned int textureID;
         glCreateTextures(GL_TEXTURE_2D, 1, &textureID);
@@ -560,7 +573,7 @@ void framebuffer_callback(int width, int height) {
     glViewport(0, 0, width, height);
 }
 
-void GLEngine::mouse_callback(double xposIn, double yposIn) {
+void RenderEngine::mouse_callback(double xposIn, double yposIn) {
     float xpos = static_cast<float>(xposIn);
     float ypos = static_cast<float>(yposIn);
     if (firstMouse) {
@@ -576,6 +589,6 @@ void GLEngine::mouse_callback(double xposIn, double yposIn) {
     camera.processMouseMovement(xoffset, yoffset);
 }
 
-void GLEngine::scroll_callback(double yoffset) {
+void RenderEngine::scroll_callback(double yoffset) {
     camera.processMouseScroll(static_cast<float>(yoffset));
 }

@@ -8,8 +8,9 @@
 #include "utils/shader.h"
 #include "utils/camera.h"
 #include "utils/gl_model.h"
+#include "utils/gl_compute.h"
 
-class GLEngine {
+class RenderEngine {
     public:
         void init();
         void init_resources();
@@ -46,6 +47,10 @@ class GLEngine {
 
         unsigned int depthCubemaps[4];
         int shadowHeight = 2048, shadowWidth = 2048;
+
+        unsigned int imgTexture;
+        int imgHeight = 1000, imgWidth = 1000;
+        ComputeShader computePipeline;
 
         Shader pipeline;
         Shader mapPipeline;

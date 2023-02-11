@@ -6,6 +6,21 @@
 #include <utility>
 
 namespace glutil {
+    AllocatedBuffer createScreenQuad() {
+        AllocatedBuffer quadBuffer;
+        float quadVertices[] = {
+            // positions        // texture Coords
+            -1.0f,  1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+            -1.0f, -1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+            1.0f,  1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f,
+            1.0f, -1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+        };
+        std::vector<float> newQuadVertices(std::begin(quadVertices), std::end(quadVertices));
+        quadBuffer = glutil::loadOldSimpleVertexBuffer(newQuadVertices, glutil::WITH_TEXCOORDS);
+
+        return quadBuffer;
+    }
+
     unsigned int loadTexture(std::string path) {
         int width, height, nrComponents;
 
@@ -20,6 +35,21 @@ namespace glutil {
 
             return 0;
         }
+    }
+
+    unsigned int createTexture(int width, int height, GLenum dataType, GLenum format, GLenum storageFormat, unsigned char* data) {
+        unsigned int textureID;
+        glCreateTextures(GL_TEXTURE_2D, 1, &textureID);
+
+        glTextureStorage2D(textureID, 1, storageFormat, width, height);
+        glTextureSubImage2D(textureID, 0, 0, 0, width, height, format, dataType, data);
+
+        glTextureParameteri(textureID, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTextureParameteri(textureID, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTextureParameteri(textureID, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTextureParameteri(textureID, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+        return textureID;
     }
 
     unsigned int createTexture(int width, int height, GLenum dataType, int nrComponents, unsigned char* data) {

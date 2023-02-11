@@ -21,6 +21,22 @@ struct PointLight {
     glm::vec3 specular;
 };
 
+struct Sphere {
+    glm::vec3 origin;
+    float radius;
+
+    glm::vec3 albedo;
+    glm::vec3 specular;
+};
+
+struct Plane {
+    glm::vec3 normal;
+    glm::vec3 point;
+
+    glm::vec3 albedo;
+    glm::vec3 specular;
+};
+
 struct Vertex {
     glm::vec3 Position;
     glm::vec3 Normal;
