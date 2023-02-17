@@ -4,6 +4,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <string>
+#include <unordered_map>
 
 struct DirLight {
     glm::vec3 direction;
@@ -43,6 +44,7 @@ struct Vertex {
     glm::vec2 TexCoords;
     glm::vec3 Tangent;
     glm::vec3 Bitangent;
+    unsigned int ID;
 };
 
 struct Texture {
@@ -55,15 +57,27 @@ struct Texture {
     unsigned char* data = nullptr;
 };
 
-struct Mesh {
-    std::vector<Vertex> vertices;
-    std::vector<unsigned int> indices;
-    std::vector<Texture> textures;
-    std::vector<std::string> texture_paths;
+#define MAX_BONES_PER_VERTEX 4
 
-    unsigned int VAO, VBO, EBO;
+struct VertexBoneData {
+    unsigned int boneIDs[MAX_BONES_PER_VERTEX] = {0};
+    float weights[MAX_BONES_PER_VERTEX] = {0.0f};
+};
+
+void addBoneData(VertexBoneData& data, unsigned int boneID, float weight);
+
+struct BoneInfo {
+    glm::mat4 offsetTransform;
+    glm::mat4 finalTransform;
 };
 
 struct AllocatedBuffer {
     unsigned int VAO, VBO, EBO;
+};
+
+struct BoundingBox {
+    glm::vec4 minPoint;
+    glm::vec4 maxPoint;
+
+    bool isInitialized = false;
 };

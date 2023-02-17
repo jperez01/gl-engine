@@ -16,7 +16,7 @@ namespace glutil {
             1.0f, -1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
         };
         std::vector<float> newQuadVertices(std::begin(quadVertices), std::end(quadVertices));
-        quadBuffer = glutil::loadOldSimpleVertexBuffer(newQuadVertices, glutil::WITH_TEXCOORDS);
+        quadBuffer = glutil::loadVertexBuffer(newQuadVertices);
 
         return quadBuffer;
     }
@@ -164,51 +164,8 @@ namespace glutil {
 
         return textureID;
     }
-
-    AllocatedBuffer loadVertexBuffer(std::vector<Vertex>& vertices, std::vector<unsigned int>& indices) {
-        GLuint binding_index = 0;
-        unsigned int VAO, EBO, VBO;
-
-        glCreateBuffers(1, &VBO);
-        glNamedBufferStorage(VBO, sizeof(Vertex) * vertices.size(), vertices.data(), GL_DYNAMIC_STORAGE_BIT);
-
-        glCreateBuffers(1, &EBO);
-        glNamedBufferStorage(EBO, sizeof(unsigned int) * indices.size(), indices.data(), GL_DYNAMIC_STORAGE_BIT);
-
-        glCreateVertexArrays(1, &VAO);
-
-        glEnableVertexArrayAttrib(VAO, 0);
-        glVertexArrayAttribFormat(VAO, 0, 3, GL_FLOAT, GL_FALSE, 0);
-        glVertexArrayAttribBinding(VAO, 0, binding_index);
-
-        glEnableVertexArrayAttrib(VAO, 1);
-        glVertexArrayAttribFormat(VAO, 1, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, Normal));
-        glVertexArrayAttribBinding(VAO, 1, binding_index);
-
-        glEnableVertexArrayAttrib(VAO, 2);
-        glVertexArrayAttribFormat(VAO, 2, 2, GL_FLOAT, GL_FALSE, offsetof(Vertex, TexCoords));
-        glVertexArrayAttribBinding(VAO, 2, binding_index);
-
-        glEnableVertexArrayAttrib(VAO, 3);
-        glVertexArrayAttribFormat(VAO, 3, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, Tangent));
-        glVertexArrayAttribBinding(VAO, 3, binding_index);
-
-        glEnableVertexArrayAttrib(VAO, 4);
-        glVertexArrayAttribFormat(VAO, 4, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, Bitangent));
-        glVertexArrayAttribBinding(VAO, 4, binding_index);
-
-        glVertexArrayVertexBuffer(VAO, binding_index, VBO, 0, sizeof(Vertex));
-        glVertexArrayElementBuffer(VAO, EBO);
-
-        AllocatedBuffer newBuffer;
-        newBuffer.VAO = VAO;
-        newBuffer.EBO = EBO;
-        newBuffer.VBO = VBO;
-
-        return newBuffer;
-    }
-
-    AllocatedBuffer loadSimpleVertexBuffer(std::vector<float>& vertices, VertexType endpoint) {
+    /**
+     * AllocatedBuffer loadSimpleVertexBuffer(std::vector<float>& vertices, VertexType endpoint) {
         int lengths[5] = { 3, 3, 2, 3, 3};
 
         GLuint binding_index = 0;
@@ -236,50 +193,8 @@ namespace glutil {
 
         return newBuffer;
     }
-
-    AllocatedBuffer loadOldVertexBuffer(std::vector<Vertex>& vertices, std::vector<unsigned int>& indices) {
-        GLuint binding_index = 0;
-        unsigned int VAO, EBO, VBO;
-
-        glCreateBuffers(1, &VBO);
-        glNamedBufferStorage(VBO, sizeof(Vertex) * vertices.size(), vertices.data(), GL_DYNAMIC_STORAGE_BIT);
-
-        glCreateBuffers(1, &EBO);
-        glNamedBufferStorage(EBO, sizeof(unsigned int) * indices.size(), indices.data(), GL_DYNAMIC_STORAGE_BIT);
-
-        glCreateVertexArrays(1, &VAO);
-
-        glBindVertexArray(VAO);
-        glBindBuffer(GL_ARRAY_BUFFER, VBO);
-
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
-
-        glEnableVertexAttribArray(1);
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*) offsetof(Vertex, Normal));
-
-        glEnableVertexAttribArray(2);
-        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*) offsetof(Vertex, TexCoords));
-        // vertex tangent
-        glEnableVertexAttribArray(3);
-        glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Tangent));
-        // vertex bitangent
-        glEnableVertexAttribArray(4);
-        glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Bitangent));
-
-        glVertexArrayElementBuffer(VAO, EBO);
-
-        AllocatedBuffer newBuffer;
-        newBuffer.VAO = VAO;
-        newBuffer.EBO = EBO;
-        newBuffer.VBO = VBO;
-
-        return newBuffer;
-    }
-    AllocatedBuffer loadOldSimpleVertexBuffer(std::vector<float>& vertices, VertexType endpoint) {
-        int lengths[5] = { 3, 3, 2, 3, 3};
-
-        GLuint binding_index = 0;
+     */
+    AllocatedBuffer loadVertexBuffer(std::vector<float>& vertices, std::vector<VertexType>& endpoints) {
         unsigned int VAO, VBO;
 
         glCreateVertexArrays(1, &VAO);
@@ -291,21 +206,112 @@ namespace glutil {
         glBindBuffer(GL_ARRAY_BUFFER, VBO);
 
         int totalLength = 0;
-        for (int i = 0; i <= endpoint; i++) {
-            totalLength += lengths[i];
+        for (int i = 0; i < endpoints.size(); i++) {
+            totalLength += sizes[endpoints[i]];
         }
 
         int currentOffset = 0;
-        for (int i = 0; i <= endpoint; i++) {
-            glEnableVertexAttribArray(i);
-            glVertexAttribPointer(i, lengths[i], GL_FLOAT, GL_FALSE, sizeof(float) * totalLength, (void*) (currentOffset * sizeof(float)));
+        for (int i = 0; i < endpoints.size(); i++) {
+            VertexType type = endpoints[i];
 
-            currentOffset += lengths[i];
+            glEnableVertexAttribArray(i);
+            glVertexAttribPointer(i, sizes[type], GL_FLOAT, GL_FALSE, sizeof(float) * totalLength, (void*) (currentOffset * sizeof(float)));
+
+            currentOffset += sizes[type];
         }
 
         AllocatedBuffer newBuffer;
         newBuffer.VAO = VAO;
         newBuffer.VBO = VBO;
+
+        return newBuffer;
+    }
+
+    AllocatedBuffer loadVertexBuffer(std::vector<float>& vertices, std::vector<unsigned int>& indices, 
+        std::vector<VertexType>& endpoints) {
+
+        GLuint binding_index = 0;
+        unsigned int VAO, VBO, EBO;
+
+        glCreateVertexArrays(1, &VAO);
+
+        glCreateBuffers(1, &VBO);
+        glNamedBufferStorage(VBO, sizeof(float) * vertices.size(), vertices.data(), GL_DYNAMIC_STORAGE_BIT);
+
+        glCreateBuffers(1, &EBO);
+        glNamedBufferStorage(EBO, sizeof(unsigned int) * indices.size(), indices.data(), GL_DYNAMIC_STORAGE_BIT);
+
+        glBindVertexArray(VAO);
+        glBindBuffer(GL_ARRAY_BUFFER, VBO);
+
+        int totalLength = 0;
+        for (int i = 0; i < endpoints.size(); i++) {
+            totalLength += sizes[endpoints[i]];
+        }
+
+        int currentOffset = 0;
+        for (int i = 0; i < endpoints.size(); i++) {
+            VertexType type = endpoints[i];
+
+            glEnableVertexAttribArray(i);
+            glVertexAttribPointer(i, sizes[type], GL_FLOAT, GL_FALSE, sizeof(float) * totalLength, (void*) (currentOffset * sizeof(float)));
+
+            currentOffset += sizes[type];
+        }
+
+        glVertexArrayElementBuffer(VAO, EBO);
+
+        AllocatedBuffer newBuffer;
+        newBuffer.VAO = VAO;
+        newBuffer.VBO = VBO;
+        newBuffer.EBO = EBO;
+
+        return newBuffer;
+    }
+
+    AllocatedBuffer loadVertexBuffer(std::vector<Vertex>& vertices, std::vector<unsigned int>& indices, 
+        std::vector<VertexType>& endpoints) {
+
+        GLuint binding_index = 0;
+        unsigned int VAO, VBO, EBO;
+
+        glCreateVertexArrays(1, &VAO);
+
+        glCreateBuffers(1, &VBO);
+        glNamedBufferStorage(VBO, sizeof(Vertex) * vertices.size(), vertices.data(), GL_DYNAMIC_STORAGE_BIT);
+
+        glCreateBuffers(1, &EBO);
+        glNamedBufferStorage(EBO, sizeof(unsigned int) * indices.size(), indices.data(), GL_DYNAMIC_STORAGE_BIT);
+
+        glBindVertexArray(VAO);
+        glBindBuffer(GL_ARRAY_BUFFER, VBO);
+
+        int totalLength = 0;
+        for (int i = 0; i < endpoints.size(); i++) {
+            totalLength += sizes[endpoints[i]];
+        }
+
+        int currentOffset = 0;
+        for (int i = 0; i < endpoints.size(); i++) {
+            VertexType type = endpoints[i];
+
+            glEnableVertexAttribArray(i);
+            if (i == 5) {
+                glVertexAttribIPointer(i, sizes[type], GL_UNSIGNED_INT, sizeof(unsigned int) * totalLength, (void*) (currentOffset * sizeof(float)));
+            } else {
+                glVertexAttribPointer(i, sizes[type], GL_FLOAT, GL_FALSE, sizeof(float) * totalLength, (void*) (currentOffset * sizeof(float)));
+            }
+
+
+            currentOffset += sizes[type];
+        }
+
+        glVertexArrayElementBuffer(VAO, EBO);
+
+        AllocatedBuffer newBuffer;
+        newBuffer.VAO = VAO;
+        newBuffer.VBO = VBO;
+        newBuffer.EBO = EBO;
 
         return newBuffer;
     }

@@ -31,10 +31,15 @@ class GLEngine {
 
         std::vector<Model> importedObjs;
         std::vector<Model> usableObjs;
+        int chosenObjIndex = 0;
         Camera camera;
 
         void mouse_callback(double xpos, double ypos);
         void scroll_callback(double yoffset);
+        void framebuffer_callback(int width, int height);
+
+        void handleClick(double xpos, double ypos);
+        void checkIntersection(glm::vec4& origin, glm::vec4& direction, glm::vec4& inverse_dir);
 
         void async_load_model(std::string path);
 
@@ -43,5 +48,3 @@ class GLEngine {
         void drawModels(Shader& shader, bool skipTextures = false);
         void drawPlane();
 };
-
-void framebuffer_callback(int width, int height);

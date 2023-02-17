@@ -43,3 +43,10 @@ target_sources(imgui PRIVATE
     imgui/imgui_impl_sdl.cpp)
 
 target_link_libraries(imgui PUBLIC sdl2)
+
+add_library(imGuizmo STATIC)
+target_include_directories(imGuizmo PUBLIC imGuizmo)
+target_sources(imGuizmo PRIVATE
+    ImGuizmo/imGuizmo.h
+    ImGuizmo/imGuizmo.cpp)
+target_link_libraries(imGuizmo PUBLIC imgui)

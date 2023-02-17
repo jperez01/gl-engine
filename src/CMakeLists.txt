@@ -17,6 +17,7 @@ add_library(gl_tools
     utils/shader.h
     utils/shader.cpp
     utils/gl_types.h
+    utils/gl_types.cpp
     utils/gl_compute.h
     utils/gl_compute.cpp)
 
@@ -39,7 +40,7 @@ target_include_directories(gl_engine PUBLIC
 
 set (GLFW_LIB "${PROJECT_SOURCE_DIR}/libs/GLFW/glfw3.lib")
 set (ASSIMP_LIB "${PROJECT_SOURCE_DIR}/libs/assimp/assimp.lib")
-target_link_libraries(gl_tools glad glm stb_image imgui sdl2 ${GLFW_LIB} ${ASSIMP_LIB})
+target_link_libraries(gl_tools glad glm stb_image imgui imGuizmo sdl2 ${GLFW_LIB} ${ASSIMP_LIB})
 
 target_link_libraries(gl_engine gl_tools)
 target_link_libraries(compute_engine gl_tools)

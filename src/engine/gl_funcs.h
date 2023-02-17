@@ -2,6 +2,7 @@
 
 #include <string>
 #include <vector>
+#include <map>
 
 #include "utils/gl_types.h"
 #include <glad/glad.h>
@@ -15,10 +16,23 @@ static std::vector<std::string> defaultFaces = {
     "back.jpg"
 };
 
+enum VertexType { POSITION = 0, NORMAL, TEXCOORDS, TANGENT, BI_TANGENT, VERTEX_ID };
+
+static std::map<VertexType, int> sizes = {
+    {POSITION, 3},
+    {NORMAL, 3},
+    {TEXCOORDS, 2},
+    {TANGENT, 3},
+    {BI_TANGENT, 3},
+    {VERTEX_ID, 1}
+};
+
+static std::vector<VertexType> basicEndpoints = {
+    POSITION, NORMAL, TEXCOORDS
+};
+
 namespace glutil {
     AllocatedBuffer createScreenQuad();
-
-    enum VertexType { BASIC = 0, WITH_NORMAL, WITH_TEXCOORDS, WITH_TANGENT, WITH_BTANGENT };
 
     unsigned int loadTexture(std::string path);
     unsigned int createTexture(int width, int height, GLenum dataType, int nrComponents = 0, unsigned char* data = nullptr);
@@ -27,9 +41,7 @@ namespace glutil {
     unsigned int createCubemap(int width, int height, GLenum dataType, int nrComponents = 0);
     unsigned int loadCubemap(std::string path, std::vector<std::string> faces = defaultFaces);
 
-    AllocatedBuffer loadVertexBuffer(std::vector<Vertex>& vertices, std::vector<unsigned int>& indices);
-    AllocatedBuffer loadSimpleVertexBuffer(std::vector<float>& vertices, VertexType endpoint = BASIC);
-
-    AllocatedBuffer loadOldVertexBuffer(std::vector<Vertex>& vertices, std::vector<unsigned int>& indices);
-    AllocatedBuffer loadOldSimpleVertexBuffer(std::vector<float>& vertices, VertexType endpoint = BASIC);
+    AllocatedBuffer loadVertexBuffer(std::vector<float>& vertices, std::vector<VertexType>& endpoints = basicEndpoints);
+    AllocatedBuffer loadVertexBuffer(std::vector<float>& vertices, std::vector<unsigned int>& indices, std::vector<VertexType>& endpoints = basicEndpoints);
+    AllocatedBuffer loadVertexBuffer(std::vector<Vertex>& vertices, std::vector<unsigned int>& indices, std::vector<VertexType>& endpoints = basicEndpoints);
 };

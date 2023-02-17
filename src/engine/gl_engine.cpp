@@ -7,11 +7,13 @@
 #include <thread>
 #include <future>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtx/string_cast.hpp>
 
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_opengl3.h"
 #include "imgui/imgui_impl_sdl.h"
 #include "imgui/imgui_stdlib.h"
+#include "ImGuizmo.h"
 
 void RenderEngine::init() {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_GAMECONTROLLER) != 0) {
@@ -62,13 +64,13 @@ void RenderEngine::init() {
 void RenderEngine::init_resources() {
     camera = Camera(glm::vec3(0.0f, 0.0f, 7.0f));
     
-    pipeline = Shader("../../shaders/shadowPoints/model.vs", "../../shaders/shadowPoints/model.fs");
+    pipeline = Shader("../../shaders/animation/model.vs", "../../shaders/shadowPoints/model.fs");
     mapPipeline = Shader("../../shaders/cubemap/map.vs", "../../shaders/cubemap/map.fs");
     shadowmapPipeline = Shader("../../shaders/shadows/map.vs", "../../shaders/shadows/map.fs");
     depthCubemapPipeline = Shader("../../shaders/shadowPoints/map.vs", "../../shaders/shadowPoints/map.fs",
         "../../shaders/shadowPoints/map.gs");
     
-    Model newModel("../../resources/objects/backpack/backpack.obj");
+    Model newModel("../../resources/objects/raptoid/scene.gltf");
     loadModelData(newModel);
     usableObjs.push_back(newModel);
 
@@ -94,7 +96,7 @@ void RenderEngine::init_resources() {
          25.0f, -0.5f, -25.0f,  0.0f, 1.0f, 0.0f,  1.0f, 1.0f
     };
     std::vector<float> newPlaneVertices(std::begin(planeVertices), std::end(planeVertices));
-    planeBuffer = glutil::loadOldSimpleVertexBuffer(newPlaneVertices, glutil::WITH_TEXCOORDS);
+    planeBuffer = glutil::loadVertexBuffer(newPlaneVertices);
     planeTexture = glutil::loadTexture("../../resources/textures/wood.png");
 
     float skyboxVertices[] = {
@@ -142,7 +144,8 @@ void RenderEngine::init_resources() {
         1.0f, -1.0f,  1.0f
     };
     std::vector<float> newSkyboxVertices(std::begin(skyboxVertices), std::end(skyboxVertices));
-    cubemapBuffer = glutil::loadOldSimpleVertexBuffer(newSkyboxVertices);
+    std::vector<VertexType> types = {POSITION};
+    cubemapBuffer = glutil::loadVertexBuffer(newSkyboxVertices, types);
 
     float quadVertices[] = {
         // positions        // texture Coords
@@ -151,8 +154,9 @@ void RenderEngine::init_resources() {
             1.0f,  1.0f, 0.0f, 1.0f, 1.0f,
             1.0f, -1.0f, 0.0f, 1.0f, 0.0f,
     };
+    types = {POSITION, TEXCOORDS};
     std::vector<float> newQuadVertices(std::begin(quadVertices), std::end(quadVertices));
-    quadBuffer = glutil::loadOldSimpleVertexBuffer(newQuadVertices, glutil::WITH_TEXCOORDS);
+    quadBuffer = glutil::loadVertexBuffer(newQuadVertices, types);
 
     std::string cubemapPath = "../../resources/textures/skybox/";
     cubemapTexture = glutil::loadCubemap(cubemapPath);
@@ -188,7 +192,9 @@ void RenderEngine::run() {
     float shininess = 100.0;
     std::string path = "";
     glm::vec3 translate = glm::vec3(0.0), rotation = glm::vec3(0.0), scale = glm::vec3(1.0);
-    int chosenObjIndex;
+    ImGuizmo::OPERATION operation = ImGuizmo::OPERATION::TRANSLATE;
+
+    float startTime = static_cast<float>(SDL_GetTicks());
 
     while (!closedWindow) {
         ImGuiIO& io = ImGui::GetIO(); (void)io;
@@ -196,6 +202,7 @@ void RenderEngine::run() {
         deltaTime = currentFrame - lastFrame;
         deltaTime *= 0.1;
         lastFrame = currentFrame;
+        animationTime = (currentFrame - startTime) / 1000.0f;
 
         while (SDL_PollEvent(&event)) {
             ImGui_ImplSDL2_ProcessEvent(&event);
@@ -215,13 +222,15 @@ void RenderEngine::run() {
 
                 if (type == SDLK_RIGHT)
                     camera.processKeyboard(RIGHT, deltaTime);
-            } else if (event.type == SDL_MOUSEMOTION && !io.WantCaptureMouse) {
+            } else if (event.type == SDL_MOUSEMOTION && (!io.WantCaptureMouse || ImGuizmo::IsOver())) {
                 mouse_callback(event.motion.x, event.motion.y);
             } else if (event.type == SDL_MOUSEWHEEL) {
                 scroll_callback(event.wheel.y);
             } else if (event.type == SDL_WINDOWEVENT
                 && event.window.event == SDL_WINDOWEVENT_RESIZED) {
                 framebuffer_callback(event.window.data1, event.window.data2);
+            } else if (event.type == SDL_MOUSEBUTTONDOWN) {
+                handleClick(event.motion.x, event.motion.y);
             }
         }
         glm::mat4 inverseView = glm::inverse(camera.getViewMatrix());
@@ -276,31 +285,6 @@ void RenderEngine::run() {
             glBindVertexArray(planeBuffer.VAO);
             glDrawArrays(GL_TRIANGLES, 0, 6);
         }
-        /**
-         * @brief 
-         * 
-         *  glm::mat4 lightProjection, lightView, lightSpaceMatrix;
-            float near = 1.0f, far = 7.5f;
-            glm::vec3 someLightPos(-2.0f, 4.0f, -1.0f);
-            lightProjection = glm::ortho(-10.0f, 10.0f, -10.0f, 10.0f, near, far);
-            lightView = glm::lookAt(pointLights[0].position, glm::vec3(0.0f), glm::vec3(0.0, 1.0, 0.0));
-            lightSpaceMatrix = lightProjection * lightView;
-
-            shadowmapPipeline.use();
-            shadowmapPipeline.setMat4("lightSpaceMatrix", lightSpaceMatrix);
-
-            glViewport(0, 0, 2048, 2048);
-            glBindFramebuffer(GL_FRAMEBUFFER, depthFBO);
-
-            glClear(GL_DEPTH_BUFFER_BIT);
-            drawModels(shadowmapPipeline, true);
-
-            glm::mat4 planeModel = glm::mat4(1.0f);
-            planeModel = glm::translate(planeModel, glm::vec3(0.0, -2.0, 0.0));
-            shadowmapPipeline.setMat4("model", planeModel);
-            glBindVertexArray(planeBuffer.VAO);
-            glDrawArrays(GL_TRIANGLES, 0, 6);
-         */
 
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
@@ -310,6 +294,7 @@ void RenderEngine::run() {
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplSDL2_NewFrame();
         ImGui::NewFrame();
+        ImGuizmo::BeginFrame();
 
         ImGui::Begin("Info");
         if (ImGui::CollapsingHeader("Point Lights")) {
@@ -349,7 +334,7 @@ void RenderEngine::run() {
                     }
                 }
                 ImGui::ListBoxFooter();
-
+                ImGui::SliderInt("Animation", &chosenAnimation, 0, usableObjs[chosenObjIndex].numAnimations-1);
                 if (ImGui::SliderFloat3("Translation", (float*)&translate, -10.0, 10.0)
                     || ImGui::SliderFloat3("Rotation", (float*)&rotation, 0.0, 90.0)
                     || ImGui::SliderFloat3("Scale", (float*)&scale, 1.0, 10.0)) {
@@ -364,6 +349,15 @@ void RenderEngine::run() {
 
         if (ImGui::CollapsingHeader("Extras")) {
             ImGui::SliderFloat("Shininess", &shininess, 1, 200);
+            if(ImGui::RadioButton("Translate", operation == ImGuizmo::TRANSLATE)) {
+                operation = ImGuizmo::TRANSLATE;
+            }
+            if(ImGui::RadioButton("Rotate", operation == ImGuizmo::ROTATE)) {
+                operation = ImGuizmo::ROTATE;
+            }
+            if(ImGui::RadioButton("Scale", operation == ImGuizmo::SCALE)) {
+                operation = ImGuizmo::SCALE;
+            }
         }
         ImGui::End();
 
@@ -379,6 +373,11 @@ void RenderEngine::run() {
 
         glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)WINDOW_WIDTH/ (float)WINDOW_HEIGHT, 0.1f, 100.0f);
         glm::mat4 view = camera.getViewMatrix();
+
+        ImGuizmo::SetOrthographic(false);
+        ImGuizmo::SetRect(0, 0, io.DisplaySize.x, io.DisplaySize.y);
+        ImGuizmo::Manipulate(glm::value_ptr(view), glm::value_ptr(projection), operation,
+            ImGuizmo::LOCAL, glm::value_ptr(usableObjs[chosenObjIndex].model_matrix));
 
         pipeline.setMat4("projection", projection);
         pipeline.setMat4("view", view);
@@ -421,7 +420,6 @@ void RenderEngine::run() {
         pipeline.setInt("diffuseTexture", 0);
         pipeline.setInt("shadowMap", 3);
         glBindVertexArray(planeBuffer.VAO);
-        glDrawArrays(GL_TRIANGLES, 0, 6);
 
         glDepthFunc(GL_LEQUAL);
         glm::mat4 convertedView = glm::mat4(glm::mat3(view));
@@ -445,7 +443,8 @@ void RenderEngine::drawModels(Shader& shader, bool skipTextures) {
     for (Model& model : usableObjs) {
         shader.setMat4("model", model.model_matrix);
 
-        for (Mesh& mesh : model.meshes) {
+        for (int j = 0; j < model.meshes.size(); j++) {
+            Mesh& mesh = model.meshes[j];
             if (!skipTextures) {
                 unsigned int diffuseNr = 1;
                 unsigned int specularNr = 1;
@@ -473,9 +472,20 @@ void RenderEngine::drawModels(Shader& shader, bool skipTextures) {
                     glBindTexture(GL_TEXTURE_2D, mesh.textures[i].id);
                 }
                 glActiveTexture(GL_TEXTURE0);
+
+                if (mesh.bone_data.size() != 0) {
+                    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, mesh.SSBO);
+
+                    mesh.getBoneTransforms(animationTime, model.scene, model.nodes, chosenAnimation);
+                    std::string boneString = "boneMatrices[";
+                    for (unsigned int i = 0; i < mesh.bone_info.size(); i++) {
+                        shader.setMat4(boneString + std::to_string(i) + "]", 
+                            mesh.bone_info[i].finalTransform);
+                    }
+                }
             }
 
-            glBindVertexArray(mesh.VAO);
+            glBindVertexArray(mesh.buffer.VAO);
             glDrawElements(GL_TRIANGLES, mesh.indices.size(), GL_UNSIGNED_INT, 0);
             glBindVertexArray(0);
         }
@@ -530,33 +540,14 @@ void RenderEngine::loadModelData(Model& model) {
     }
 
     for (Mesh& mesh : model.meshes) {
-        GLuint binding_index = 0;
-
-        glCreateVertexArrays(1, &mesh.VAO);
-        glCreateBuffers(1, &mesh.EBO);
-        glCreateBuffers(1, &mesh.VBO);
-
-        glNamedBufferStorage(mesh.VBO, sizeof(Vertex) * mesh.vertices.size(), mesh.vertices.data(), GL_DYNAMIC_STORAGE_BIT);
-        glNamedBufferStorage(mesh.EBO, mesh.indices.size() * sizeof(unsigned int), mesh.indices.data(), GL_DYNAMIC_STORAGE_BIT);
+        std::vector<VertexType> endpoints = {POSITION, NORMAL, TEXCOORDS, TANGENT, BI_TANGENT, VERTEX_ID};
+        mesh.buffer = glutil::loadVertexBuffer(mesh.vertices, mesh.indices, endpoints);
         
-        glBindVertexArray(mesh.VAO);
-        glBindBuffer(GL_ARRAY_BUFFER, mesh.VBO);
-        glVertexArrayElementBuffer(mesh.VAO, mesh.EBO);
-
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
-
-        glEnableVertexAttribArray(1);
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*) offsetof(Vertex, Normal));
-
-        glEnableVertexAttribArray(2);
-        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*) offsetof(Vertex, TexCoords));
-        // vertex tangent
-        glEnableVertexAttribArray(3);
-        glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Tangent));
-        // vertex bitangent
-        glEnableVertexAttribArray(4);
-        glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Bitangent));
+        if (mesh.bone_data.size() != 0) {
+            glCreateBuffers(1, &mesh.SSBO);
+            glNamedBufferStorage(mesh.SSBO, sizeof(VertexBoneData) * mesh.bone_data.size(),
+                mesh.bone_data.data(), GL_DYNAMIC_STORAGE_BIT);
+        }
 
         for (std::string& path : mesh.texture_paths) {
             for (unsigned int j = 0; j < model.textures_loaded.size(); j++) {
@@ -569,8 +560,10 @@ void RenderEngine::loadModelData(Model& model) {
     }
 }
 
-void framebuffer_callback(int width, int height) {
+void RenderEngine::framebuffer_callback(int width, int height) {
     glViewport(0, 0, width, height);
+    WINDOW_HEIGHT = height;
+    WINDOW_WIDTH = width;
 }
 
 void RenderEngine::mouse_callback(double xposIn, double yposIn) {
@@ -591,4 +584,62 @@ void RenderEngine::mouse_callback(double xposIn, double yposIn) {
 
 void RenderEngine::scroll_callback(double yoffset) {
     camera.processMouseScroll(static_cast<float>(yoffset));
+}
+
+void RenderEngine::handleClick(double xposIn, double yposIn) {
+    float xpos = static_cast<float>(xposIn);
+    float ypos = static_cast<float>(yposIn);
+
+    glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)WINDOW_WIDTH/ (float)WINDOW_HEIGHT, 0.1f, 100.0f);
+
+    float convertedX = (2.0f * xpos) / WINDOW_WIDTH - 1.0f;
+    float convertedY = (2.0f * ypos) / WINDOW_HEIGHT - 1.0f;
+    convertedY *= -1;
+    glm::vec4 ray_clip(convertedX, convertedY, -1.0f, 1.0f);
+    glm::vec4 ray_eye = glm::inverse(projection) * ray_clip;
+    ray_eye = glm::vec4(ray_eye.x, ray_eye.y, -1.0f, 1.0f);
+    glm::vec4 ray_world = glm::inverse(camera.getViewMatrix()) * ray_eye;
+
+    glm::vec4 ray_origin = glm::vec4(camera.Position.x, camera.Position.y, camera.Position.z, 1.0f);
+    glm::vec4 ray_dir = glm::normalize(ray_world - ray_origin);
+    glm::vec4 inverse_dir = glm::vec4(1.0f) / ray_dir;
+
+    checkIntersection(ray_origin, ray_dir, inverse_dir);
+}
+
+void RenderEngine::checkIntersection(glm::vec4& origin, glm::vec4& direction, glm::vec4& inverse_dir) {
+    for (int i = 0; i < usableObjs.size(); i++) {
+        glm::vec4 boxMin = usableObjs[i].model_matrix * usableObjs[i].aabb.minPoint;
+        glm::vec4 boxMax = usableObjs[i].model_matrix * usableObjs[i].aabb.maxPoint;
+
+        float tmin = -INFINITY, tmax = INFINITY;
+        if (direction.x != 0.0f) {
+            float t1 = (boxMin.x - origin.x) * inverse_dir.x;
+            float t2 = (boxMax.x - origin.x) * inverse_dir.x;
+
+            tmin = std::max(tmin, std::min(t1, t2));
+            tmax = std::min(tmax, std::max(t1, t2));
+        }
+
+        if (direction.y != 0.0f) {
+            float t1 = (boxMin.y - origin.y) * inverse_dir.y;
+            float t2 = (boxMax.y - origin.y) * inverse_dir.y;
+
+            tmin = std::max(tmin, std::min(t1, t2));
+            tmax = std::min(tmax, std::max(t1, t2));
+        }
+
+        if (direction.z != 0.0f) {
+            float t1 = (boxMin.z - origin.z) * inverse_dir.z;
+            float t2 = (boxMax.z - origin.z) * inverse_dir.z;
+
+            tmin = std::max(tmin, std::min(t1, t2));
+            tmax = std::min(tmax, std::max(t1, t2));
+        }
+
+        if (tmax >= tmin) {
+            chosenObjIndex = i;
+            break;
+        }
+    }
 }
