@@ -15,52 +15,6 @@
 #include "imgui/imgui_stdlib.h"
 #include "ImGuizmo.h"
 
-void RenderEngine::init() {
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_GAMECONTROLLER) != 0) {
-        printf("Error: %s \n", SDL_GetError());
-        return;
-    }
-
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, 0);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6);
-
-    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
-    SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
-
-    SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE
-        | SDL_WINDOW_ALLOW_HIGHDPI);
-    window = SDL_CreateWindow("GL Engine", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-        WINDOW_WIDTH, WINDOW_HEIGHT, window_flags);
-    if (window == nullptr) {
-        printf("Error: %s \n", SDL_GetError());
-        return;
-    }
-
-    gl_context = SDL_GL_CreateContext(window);
-    SDL_GL_MakeCurrent(window, gl_context);
-    gladLoadGLLoader(SDL_GL_GetProcAddress);
-    SDL_GL_SetSwapInterval(1);
-
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGuiIO& io = ImGui::GetIO(); (void)io;
-
-    ImGui::StyleColorsDark();
-
-    ImGui_ImplSDL2_InitForOpenGL(window, gl_context);
-    ImGui_ImplOpenGL3_Init("#version 460");
-
-    glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
-
-    glEnable(GL_DEPTH_TEST);
-    glEnable(GL_STENCIL_TEST);
-
-    init_resources();
-}
-
 void RenderEngine::init_resources() {
     camera = Camera(glm::vec3(0.0f, 0.0f, 7.0f));
     
@@ -70,7 +24,7 @@ void RenderEngine::init_resources() {
     depthCubemapPipeline = Shader("../../shaders/shadowPoints/map.vs", "../../shaders/shadowPoints/map.fs",
         "../../shaders/shadowPoints/map.gs");
     
-    Model newModel("../../resources/objects/raptoid/scene.gltf");
+    Model newModel("../../resources/objects/trooper/scene.gltf");
     loadModelData(newModel);
     usableObjs.push_back(newModel);
 
@@ -492,22 +446,6 @@ void RenderEngine::drawModels(Shader& shader, bool skipTextures) {
     }
 }
 
-void RenderEngine::cleanup() {
-    ImGui_ImplOpenGL3_Shutdown();
-    ImGui_ImplSDL2_Shutdown();
-    ImGui::DestroyContext();
-
-    SDL_GL_DeleteContext(gl_context);
-    SDL_DestroyWindow(window);
-    SDL_Quit();
-}
-
-void RenderEngine::async_load_model(std::string path) {
-    Model newModel(path);
-
-    importedObjs.push_back(newModel);
-}
-
 void RenderEngine::loadModelData(Model& model) {
     for (Texture& texture : model.textures_loaded) {
         unsigned int textureID;
@@ -556,90 +494,6 @@ void RenderEngine::loadModelData(Model& model) {
                     break;
                 }
             }
-        }
-    }
-}
-
-void RenderEngine::framebuffer_callback(int width, int height) {
-    glViewport(0, 0, width, height);
-    WINDOW_HEIGHT = height;
-    WINDOW_WIDTH = width;
-}
-
-void RenderEngine::mouse_callback(double xposIn, double yposIn) {
-    float xpos = static_cast<float>(xposIn);
-    float ypos = static_cast<float>(yposIn);
-    if (firstMouse) {
-        lastX = xpos;
-        lastY = ypos;
-        firstMouse = false;
-    }
-    float xoffset = xpos - lastX;
-    float yoffset = lastY - ypos;
-    lastX = xpos;
-    lastY = ypos;
-
-    camera.processMouseMovement(xoffset, yoffset);
-}
-
-void RenderEngine::scroll_callback(double yoffset) {
-    camera.processMouseScroll(static_cast<float>(yoffset));
-}
-
-void RenderEngine::handleClick(double xposIn, double yposIn) {
-    float xpos = static_cast<float>(xposIn);
-    float ypos = static_cast<float>(yposIn);
-
-    glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)WINDOW_WIDTH/ (float)WINDOW_HEIGHT, 0.1f, 100.0f);
-
-    float convertedX = (2.0f * xpos) / WINDOW_WIDTH - 1.0f;
-    float convertedY = (2.0f * ypos) / WINDOW_HEIGHT - 1.0f;
-    convertedY *= -1;
-    glm::vec4 ray_clip(convertedX, convertedY, -1.0f, 1.0f);
-    glm::vec4 ray_eye = glm::inverse(projection) * ray_clip;
-    ray_eye = glm::vec4(ray_eye.x, ray_eye.y, -1.0f, 1.0f);
-    glm::vec4 ray_world = glm::inverse(camera.getViewMatrix()) * ray_eye;
-
-    glm::vec4 ray_origin = glm::vec4(camera.Position.x, camera.Position.y, camera.Position.z, 1.0f);
-    glm::vec4 ray_dir = glm::normalize(ray_world - ray_origin);
-    glm::vec4 inverse_dir = glm::vec4(1.0f) / ray_dir;
-
-    checkIntersection(ray_origin, ray_dir, inverse_dir);
-}
-
-void RenderEngine::checkIntersection(glm::vec4& origin, glm::vec4& direction, glm::vec4& inverse_dir) {
-    for (int i = 0; i < usableObjs.size(); i++) {
-        glm::vec4 boxMin = usableObjs[i].model_matrix * usableObjs[i].aabb.minPoint;
-        glm::vec4 boxMax = usableObjs[i].model_matrix * usableObjs[i].aabb.maxPoint;
-
-        float tmin = -INFINITY, tmax = INFINITY;
-        if (direction.x != 0.0f) {
-            float t1 = (boxMin.x - origin.x) * inverse_dir.x;
-            float t2 = (boxMax.x - origin.x) * inverse_dir.x;
-
-            tmin = std::max(tmin, std::min(t1, t2));
-            tmax = std::min(tmax, std::max(t1, t2));
-        }
-
-        if (direction.y != 0.0f) {
-            float t1 = (boxMin.y - origin.y) * inverse_dir.y;
-            float t2 = (boxMax.y - origin.y) * inverse_dir.y;
-
-            tmin = std::max(tmin, std::min(t1, t2));
-            tmax = std::min(tmax, std::max(t1, t2));
-        }
-
-        if (direction.z != 0.0f) {
-            float t1 = (boxMin.z - origin.z) * inverse_dir.z;
-            float t2 = (boxMax.z - origin.z) * inverse_dir.z;
-
-            tmin = std::max(tmin, std::min(t1, t2));
-            tmax = std::min(tmax, std::max(t1, t2));
-        }
-
-        if (tmax >= tmin) {
-            chosenObjIndex = i;
-            break;
         }
     }
 }

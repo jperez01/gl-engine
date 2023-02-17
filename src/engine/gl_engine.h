@@ -4,39 +4,17 @@
 #include <SDL.h>
 #include <vector>
 
-#include "utils/gl_types.h"
-#include "utils/shader.h"
-#include "utils/camera.h"
-#include "utils/gl_model.h"
 #include "utils/gl_compute.h"
+#include "gl_base_engine.h"
 
-class RenderEngine {
+class RenderEngine : public GLEngine {
     public:
-        void init();
         void init_resources();
         void run();
-        void draw();
-        void cleanup();
     
     private:
-        SDL_Window* window;
-        SDL_GLContext gl_context;
-        int WINDOW_WIDTH = 1280, WINDOW_HEIGHT = 720;
-
-        float lastX = WINDOW_WIDTH / 2.0f;
-        float lastY = WINDOW_HEIGHT / 2.0f;
-        bool firstMouse = true;
-
-        float deltaTime = 0.0f;
-        float lastFrame = 0.0f;
         float animationTime = 0.0f;
-
-        std::vector<Model> importedObjs;
-        std::vector<Model> usableObjs;
-
-        int chosenObjIndex = 0;
         int chosenAnimation = 0;
-        Camera camera;
 
         AllocatedBuffer planeBuffer;
         unsigned int planeTexture;
@@ -63,15 +41,6 @@ class RenderEngine {
 
         PointLight pointLights[4];
         DirLight directionLight;
-
-        void mouse_callback(double xpos, double ypos);
-        void scroll_callback(double yoffset);
-        void framebuffer_callback(int width, int height);
-
-        void handleClick(double xpos, double ypos);
-        void checkIntersection(glm::vec4& origin, glm::vec4& direction, glm::vec4& inverse_dir);
-
-        void async_load_model(std::string path);
 
         void loadModelData(Model& model);
 

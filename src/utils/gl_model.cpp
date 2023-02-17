@@ -53,7 +53,6 @@ void Mesh::calcInterpolatedRotation(aiQuaternion& out, float animationTicks, con
     
     float deltaTime = t2 - t1;
     float factor = (animationTicks - t1) / deltaTime;
-    assert(factor >= 0.0f && factor <= 1.0f);
 
     const aiQuaternion& start = nodeAnim->mRotationKeys[rotationIndex].mValue,
         end = nodeAnim->mRotationKeys[nextRotationIndex].mValue;
@@ -147,7 +146,6 @@ Model::Model() = default;
 Model::Model(std::string path, FileType type) {
     loadInfo(path, type);
     model_matrix = glm::mat4(1.0f);
-    model_matrix = glm::scale(model_matrix, glm::vec3(0.01f));
 }
 
 void Model::loadInfo(std::string path, FileType type) {
