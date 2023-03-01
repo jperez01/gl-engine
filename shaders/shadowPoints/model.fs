@@ -30,8 +30,16 @@ uniform sampler2D texture_specular1;
 uniform samplerCube shadowMaps[4];
 uniform sampler2D shadowMap;
 
+uniform sampler2DArray cascadedMap;
+layout (std140, binding = 0) uniform LightSpaceMatrices {
+    mat4 lightSpaceMatrices[16];
+};
+uniform float cascadePlaneDistances[16];
+uniform int cascadeCount;
+
 uniform float shininess;
 uniform float far_plane;
+uniform mat4 view;
 uniform vec3 viewPos;
 uniform DirLight dirLight;
 uniform PointLight pointLights[4];
@@ -101,6 +109,49 @@ vec3 calcPointLight(PointLight light, vec3 position, vec3 normal, vec3 viewDir, 
     return (ambient + (1.0 - shadow) * (diffuse + specular)) * texture(texture_diffuse1, TexCoords).rgb;
 }
 
+float cascadedShadowCalculation(vec3 fragPosWorldSpace, vec3 lightDir) {
+    vec4 viewSpace = view * vec4(fragPosWorldSpace, 1.0);
+    float depthValue = abs(viewSpace.z);
+
+    int layer = -1;
+    for (int i = 0; i < cascadeCount; i++) {
+        if (depthValue < cascadePlaneDistances[i]) {
+            layer = i;
+            break;
+        }
+    }
+    if (layer == -1) layer = cascadeCount;
+
+    vec4 lightSpacePos = lightSpaceMatrices[layer] * vec4(fragPosWorldSpace, 1.0);
+
+    vec3 projCoords = lightSpacePos.xyz / lightSpacePos.w;
+    projCoords = projCoords * 0.5 + 0.5;
+
+    float currentDepth = projCoords.z;
+    if (currentDepth > 1.0) return 0.0;
+
+    vec3 normal = normalize(Normal);
+    float bias = max(0.05 * (1.0 - dot(normal, lightDir)), 0.005);
+
+    if (layer == cascadeCount) bias *= 1 / (far_plane / 0.5);
+    else bias *= 1 / (cascadePlaneDistances[layer] * 0.5);
+
+    float shadow = 0.0;
+    vec2 texelSize = 1.0 / vec2(textureSize(cascadedMap, 0));
+
+    for (int x = -1; x <= 1; x++) {
+        for (int y = -1; y <= 1; y++) {
+            float pcfDepth = texture(cascadedMap, vec3(projCoords.xy + vec2(x, y) * texelSize, layer)).r;
+            shadow += (currentDepth - bias) > pcfDepth ? 1.0 : 0.0;
+        }
+    }
+    shadow /= 9.0;
+
+    if (projCoords.z > 1.0) shadow = 0.0;
+
+    return shadow;
+}
+
 vec3 calcDirLight(DirLight light, vec3 normal, vec3 viewDir) {
     vec3 lightDir = normalize(-light.direction);
 
@@ -113,7 +164,10 @@ vec3 calcDirLight(DirLight light, vec3 normal, vec3 viewDir) {
     vec3 specular = spec * light.specular * texture(texture_specular1, TexCoords).rgb;
     vec3 diffuse = diff * light.diffuse * texture(texture_diffuse1, TexCoords).rgb;
 
-    return ambient + specular + diffuse;
+    float shadow = cascadedShadowCalculation(FragPos, lightDir);
+
+    vec3 totalColor = ambient + (1.0 - shadow) * (diffuse + specular);
+    return totalColor;
 }
 
 void main()

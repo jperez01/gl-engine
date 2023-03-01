@@ -103,7 +103,7 @@ void Mesh::getBoneTransforms(float time, const aiScene* scene,
     for (int i = 0; i < nodeData.size(); i++) {
         NodeData& node = nodeData[i];
         const aiNodeAnim* nodeAnim = findNodeAnim(animation, node.name);
-        glm::mat4 totalTransform = node.transformation;
+        glm::mat4 totalTransform = node.originalTransform;
 
         if (nodeAnim) {
             aiVector3D scaling;
@@ -127,7 +127,7 @@ void Mesh::getBoneTransforms(float time, const aiScene* scene,
 
         if (boneName_To_Index.find(node.name) != boneName_To_Index.end()) {
             unsigned int boneIndex = boneName_To_Index[node.name];
-            bone_info[boneIndex].finalTransform = globalInverse * node.transformation * bone_info[boneIndex].offsetTransform;
+            bone_info[boneIndex].finalTransform = node.transformation * bone_info[boneIndex].offsetTransform;
         }
     }
 }
@@ -176,7 +176,7 @@ void Model::processNode(aiNode *node, const aiScene *scene, int parentIndex) {
 
     NodeData data;
     data.name = std::string(node->mName.data);
-    data.transformation = convertMatrix(node->mTransformation);
+    data.originalTransform = convertMatrix(node->mTransformation);
     data.parentIndex = parentIndex;
     nodes.push_back(data);
     int index = nodes.size() - 1;
@@ -285,12 +285,24 @@ Mesh Model::processMesh(aiMesh *mesh, const aiScene *scene) {
     textures.insert(textures.end(), specularMaps.begin(), specularMaps.end());
 
     std::vector<std::string> normalMaps = loadMaterialTextures(material,
-        aiTextureType_HEIGHT, "texture_normal");
+        aiTextureType_NORMALS, "texture_normal");
     textures.insert(textures.end(), normalMaps.begin(), normalMaps.end());
 
     std::vector<std::string> heightMaps = loadMaterialTextures(material,
         aiTextureType_AMBIENT, "texture_height");
     textures.insert(textures.end(), heightMaps.begin(), heightMaps.end());
+
+    std::vector<std::string> aoMaps = loadMaterialTextures(material,
+        aiTextureType_LIGHTMAP, "texture_ao");
+    textures.insert(textures.end(), aoMaps.begin(), aoMaps.end());
+
+    std::vector<std::string> metallicMaps = loadMaterialTextures(material,
+        aiTextureType_METALNESS, "texture_metallic");
+    textures.insert(textures.end(), metallicMaps.begin(), metallicMaps.end());
+
+    std::vector<std::string> roughnessMaps = loadMaterialTextures(material,
+        aiTextureType_DIFFUSE_ROUGHNESS, "texture_roughness");
+    textures.insert(textures.end(), roughnessMaps.begin(), roughnessMaps.end());
 
     Mesh newMesh;
     newMesh.indices = indices;
@@ -299,7 +311,7 @@ Mesh Model::processMesh(aiMesh *mesh, const aiScene *scene) {
     newMesh.bone_data = boneData;
     newMesh.bone_info = boneInfo;
     newMesh.boneName_To_Index = nameToIndex;
-    glm::mat4 globalTransform = convertMatrix(scene->mRootNode->mTransformation);
+    glm::mat4 globalTransform = glm::mat4(1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0);
     newMesh.globalInverse = glm::inverse(globalTransform);
     
     return newMesh;

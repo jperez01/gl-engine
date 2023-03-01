@@ -17,11 +17,19 @@ private:
     std::vector<DeferredLight> lights;
 
     unsigned int deferredFBO;
-    unsigned int gPosition, gNormal, gAlbedo, rboDepth;
+    unsigned int gPosition, gNormal, gAlbedo, gReflectionPosition;
+    unsigned int depthMap;
+
+    unsigned int ssrFBO;
+    unsigned int gReflectionColor;
 
     std::vector<glm::vec3> objectPositions;
 
     AllocatedBuffer quadBuffer;
+    AllocatedBuffer planeBuffer;
+    unsigned int planeTexture;
+
     Shader renderPipeline;
     Shader gbufferPipeline;
+    Shader ssrPipeline;
 };

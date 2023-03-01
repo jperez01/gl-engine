@@ -22,6 +22,9 @@ class GLEngine {
         SDL_GLContext gl_context;
         int WINDOW_WIDTH = 1280, WINDOW_HEIGHT = 720;
 
+        bool closedWindow = false;
+        bool keyDown[4] = { false, false, false, false};
+
         float lastX = WINDOW_WIDTH / 2.0f;
         float lastY = WINDOW_HEIGHT / 2.0f;
         bool firstMouse = true;
@@ -33,6 +36,11 @@ class GLEngine {
         std::vector<Model> usableObjs;
         int chosenObjIndex = 0;
         Camera camera;
+
+        float animationTime = 0.0f;
+        int chosenAnimation = 0;
+
+        void handleEvents();
 
         void mouse_callback(double xpos, double ypos);
         void scroll_callback(double yoffset);

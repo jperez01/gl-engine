@@ -1,5 +1,5 @@
 #include "gl_compute_eng.h"
-#include "gl_funcs.h"
+#include "utils/gl_funcs.h"
 
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_opengl3.h"

@@ -15,6 +15,7 @@
 
 struct NodeData {
     glm::mat4 transformation;
+    glm::mat4 originalTransform;
     std::string name;
     int parentIndex;
 };

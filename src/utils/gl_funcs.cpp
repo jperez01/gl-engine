@@ -6,6 +6,55 @@
 #include <utility>
 
 namespace glutil {
+    AllocatedBuffer createUnitCube() {
+        float skyboxVertices[] = {
+            // back face
+            -1.0f, -1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 0.0f, 0.0f, // bottom-left
+             1.0f,  1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 1.0f, 1.0f, // top-right
+             1.0f, -1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 1.0f, 0.0f, // bottom-right         
+             1.0f,  1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 1.0f, 1.0f, // top-right
+            -1.0f, -1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 0.0f, 0.0f, // bottom-left
+            -1.0f,  1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 0.0f, 1.0f, // top-left
+            // front face
+            -1.0f, -1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f, 0.0f, // bottom-left
+             1.0f, -1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f, 0.0f, // bottom-right
+             1.0f,  1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f, 1.0f, // top-right
+             1.0f,  1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f, 1.0f, // top-right
+            -1.0f,  1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f, 1.0f, // top-left
+            -1.0f, -1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f, 0.0f, // bottom-left
+            // left face
+            -1.0f,  1.0f,  1.0f, -1.0f,  0.0f,  0.0f, 1.0f, 0.0f, // top-right
+            -1.0f,  1.0f, -1.0f, -1.0f,  0.0f,  0.0f, 1.0f, 1.0f, // top-left
+            -1.0f, -1.0f, -1.0f, -1.0f,  0.0f,  0.0f, 0.0f, 1.0f, // bottom-left
+            -1.0f, -1.0f, -1.0f, -1.0f,  0.0f,  0.0f, 0.0f, 1.0f, // bottom-left
+            -1.0f, -1.0f,  1.0f, -1.0f,  0.0f,  0.0f, 0.0f, 0.0f, // bottom-right
+            -1.0f,  1.0f,  1.0f, -1.0f,  0.0f,  0.0f, 1.0f, 0.0f, // top-right
+            // right face
+             1.0f,  1.0f,  1.0f,  1.0f,  0.0f,  0.0f, 1.0f, 0.0f, // top-left
+             1.0f, -1.0f, -1.0f,  1.0f,  0.0f,  0.0f, 0.0f, 1.0f, // bottom-right
+             1.0f,  1.0f, -1.0f,  1.0f,  0.0f,  0.0f, 1.0f, 1.0f, // top-right         
+             1.0f, -1.0f, -1.0f,  1.0f,  0.0f,  0.0f, 0.0f, 1.0f, // bottom-right
+             1.0f,  1.0f,  1.0f,  1.0f,  0.0f,  0.0f, 1.0f, 0.0f, // top-left
+             1.0f, -1.0f,  1.0f,  1.0f,  0.0f,  0.0f, 0.0f, 0.0f, // bottom-left     
+            // bottom face
+            -1.0f, -1.0f, -1.0f,  0.0f, -1.0f,  0.0f, 0.0f, 1.0f, // top-right
+             1.0f, -1.0f, -1.0f,  0.0f, -1.0f,  0.0f, 1.0f, 1.0f, // top-left
+             1.0f, -1.0f,  1.0f,  0.0f, -1.0f,  0.0f, 1.0f, 0.0f, // bottom-left
+             1.0f, -1.0f,  1.0f,  0.0f, -1.0f,  0.0f, 1.0f, 0.0f, // bottom-left
+            -1.0f, -1.0f,  1.0f,  0.0f, -1.0f,  0.0f, 0.0f, 0.0f, // bottom-right
+            -1.0f, -1.0f, -1.0f,  0.0f, -1.0f,  0.0f, 0.0f, 1.0f, // top-right
+            // top face
+            -1.0f,  1.0f, -1.0f,  0.0f,  1.0f,  0.0f, 0.0f, 1.0f, // top-left
+             1.0f,  1.0f , 1.0f,  0.0f,  1.0f,  0.0f, 1.0f, 0.0f, // bottom-right
+             1.0f,  1.0f, -1.0f,  0.0f,  1.0f,  0.0f, 1.0f, 1.0f, // top-right     
+             1.0f,  1.0f,  1.0f,  0.0f,  1.0f,  0.0f, 1.0f, 0.0f, // bottom-right
+            -1.0f,  1.0f, -1.0f,  0.0f,  1.0f,  0.0f, 0.0f, 1.0f, // top-left
+            -1.0f,  1.0f,  1.0f,  0.0f,  1.0f,  0.0f, 0.0f, 0.0f  // bottom-left        
+        };
+        std::vector<VertexType> parameters = { POSITION, NORMAL, TEXCOORDS};
+        std::vector<float> newSkyboxVertices(std::begin(skyboxVertices), std::end(skyboxVertices));
+        return glutil::loadVertexBuffer(newSkyboxVertices, parameters);
+    }
     AllocatedBuffer createScreenQuad() {
         AllocatedBuffer quadBuffer;
         float quadVertices[] = {
@@ -19,6 +68,53 @@ namespace glutil {
         quadBuffer = glutil::loadVertexBuffer(newQuadVertices);
 
         return quadBuffer;
+    }
+
+    AllocatedBuffer createPlane() {
+        float planeVertices[] = {
+            // positions            // normals         // texcoords
+            25.0f, -0.5f,  25.0f,  0.0f, 1.0f, 0.0f,  1.0f,  0.0f,
+            -25.0f, -0.5f,  25.0f,  0.0f, 1.0f, 0.0f,   0.0f,  0.0f,
+            -25.0f, -0.5f, -25.0f,  0.0f, 1.0f, 0.0f,   0.0f, 1.0f,
+
+            25.0f, -0.5f,  25.0f,  0.0f, 1.0f, 0.0f,  1.0f,  0.0f,
+            -25.0f, -0.5f, -25.0f,  0.0f, 1.0f, 0.0f,   0.0f, 1.0f,
+            25.0f, -0.5f, -25.0f,  0.0f, 1.0f, 0.0f,  1.0f, 1.0f
+        };
+        std::vector<float> newPlaneVertices(std::begin(planeVertices), std::end(planeVertices));
+        std::vector<VertexType> parameters = { POSITION, NORMAL, TEXCOORDS};
+
+        return glutil::loadVertexBuffer(newPlaneVertices, parameters);
+    }
+
+    unsigned int loadFloatTexture(std::string path, GLenum format, GLenum storageFormat) {
+        int width, height, nrComponents;
+
+        float *data = stbi_loadf(path.c_str(), &width, &height, &nrComponents, 0);
+        if (data) {
+            unsigned int textureID = createTexture(width, height, GL_FLOAT, format, storageFormat, data);
+            return textureID;
+        } else {
+            std::cout << "HDR texture failed to load at path: " << path << std::endl;
+            stbi_image_free(data);
+
+            return 0;
+        }
+    }
+
+    unsigned int loadTexture(std::string path, GLenum dataType, GLenum format, GLenum storageFormat) {
+        int width, height, nrComponents;
+        
+        unsigned char *data = stbi_load(path.c_str(), &width, &height, &nrComponents, 0);
+        if (data) {
+            unsigned int textureID = createTexture(width, height, dataType, format, storageFormat, data);
+            return textureID;
+        } else {
+            std::cout << "Texture failed to load at path: " << path << std::endl;
+            stbi_image_free(data);
+
+            return 0;
+        }
     }
 
     unsigned int loadTexture(std::string path) {
@@ -37,7 +133,25 @@ namespace glutil {
         }
     }
 
-    unsigned int createTexture(int width, int height, GLenum dataType, GLenum format, GLenum storageFormat, unsigned char* data) {
+    unsigned int createTextureArray(int size, int width, int height, GLenum dataType, GLenum format, GLenum storageFormat, void* data) {
+        unsigned int textureID;
+        glCreateTextures(GL_TEXTURE_2D_ARRAY, 1, &textureID);
+
+        glTextureStorage3D(textureID, 1, storageFormat, width, height, size);
+
+        for (int i = 0; i < size; i++) {
+            glTextureSubImage3D(textureID, 0, 0, 0, i, width, height, 1, format, dataType, data);
+        }
+
+        glTextureParameteri(textureID, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTextureParameteri(textureID, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTextureParameteri(textureID, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+        glTextureParameteri(textureID, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+
+        return textureID;
+    }
+
+    unsigned int createTexture(int width, int height, GLenum dataType, GLenum format, GLenum storageFormat, void* data) {
         unsigned int textureID;
         glCreateTextures(GL_TEXTURE_2D, 1, &textureID);
 
@@ -83,14 +197,12 @@ namespace glutil {
         return textureID;
     }
 
-    unsigned int createCubemap(int width, int height, GLenum dataType, int nrComponents) {
+    unsigned int createCubemap(int width, int height, GLenum dataType, GLenum format, GLenum storageFormat, int nrComponents) {
         unsigned int cubemapID;
         
         glGenTextures(1, &cubemapID);
         glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapID);
 
-        GLenum format;
-        GLenum storageFormat;
         if (nrComponents == 0) {
             format = GL_DEPTH_COMPONENT;
             storageFormat = GL_DEPTH_COMPONENT;
@@ -109,8 +221,8 @@ namespace glutil {
             glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, storageFormat, width, height, 0,
                 format, dataType, nullptr);
 
-            glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-            glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
             glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
             glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
             glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE); 

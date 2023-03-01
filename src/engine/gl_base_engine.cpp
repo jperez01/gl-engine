@@ -1,5 +1,5 @@
 #include "gl_base_engine.h"
-#include "gl_funcs.h"
+#include "utils/gl_funcs.h"
 
 #include <iostream>
 #include <iterator>
@@ -12,6 +12,7 @@
 #include "imgui/imgui_impl_opengl3.h"
 #include "imgui/imgui_impl_sdl.h"
 #include "imgui/imgui_stdlib.h"
+#include "ImGuizmo.h"
 
 void GLEngine::init() {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_GAMECONTROLLER) != 0) {
@@ -64,8 +65,10 @@ void GLEngine::run() {}
 
 void GLEngine::drawModels(Shader& shader, bool skipTextures) {
     for (Model& model : usableObjs) {
+        shader.setMat4("model", model.model_matrix);
 
-        for (Mesh& mesh : model.meshes) {
+        for (int j = 0; j < model.meshes.size(); j++) {
+            Mesh& mesh = model.meshes[j];
             if (!skipTextures) {
                 unsigned int diffuseNr = 1;
                 unsigned int specularNr = 1;
@@ -93,6 +96,17 @@ void GLEngine::drawModels(Shader& shader, bool skipTextures) {
                     glBindTexture(GL_TEXTURE_2D, mesh.textures[i].id);
                 }
                 glActiveTexture(GL_TEXTURE0);
+
+                if (mesh.bone_data.size() != 0 && model.scene->mAnimations > 0) {
+                    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, mesh.SSBO);
+
+                    mesh.getBoneTransforms(animationTime, model.scene, model.nodes, chosenAnimation);
+                    std::string boneString = "boneMatrices[";
+                    for (unsigned int i = 0; i < mesh.bone_info.size(); i++) {
+                        shader.setMat4(boneString + std::to_string(i) + "]", 
+                            mesh.bone_info[i].finalTransform);
+                    }
+                }
             }
 
             glBindVertexArray(mesh.buffer.VAO);
@@ -120,31 +134,11 @@ void GLEngine::async_load_model(std::string path) {
 
 void GLEngine::loadModelData(Model& model) {
     for (Texture& texture : model.textures_loaded) {
-        unsigned int textureID;
-        glCreateTextures(GL_TEXTURE_2D, 1, &textureID);
-        texture.id = textureID;
-
-        GLenum format;
-        GLenum storageFormat;
-        if (texture.nrComponents == 1) {
-            format = GL_RED;
-            storageFormat = GL_R8;
-        } else if (texture.nrComponents == 3) {
-            format = GL_RGB;
-            storageFormat = GL_RGB8;
-        } else if (texture.nrComponents == 4) {
-            format = GL_RGBA;
-            storageFormat = GL_RGBA8;
-        }
-
-        glTextureStorage2D(textureID, 1, storageFormat, texture.width, texture.height);
-        glTextureSubImage2D(textureID, 0, 0, 0, texture.width, texture.height, format, GL_UNSIGNED_BYTE, texture.data);
+        unsigned int textureID = glutil::createTexture(texture.width, texture.height,
+            GL_UNSIGNED_BYTE, texture.nrComponents, texture.data);
         glGenerateTextureMipmap(textureID);
-
-        glTextureParameteri(textureID, GL_TEXTURE_WRAP_S, GL_REPEAT);
-        glTextureParameteri(textureID, GL_TEXTURE_WRAP_T, GL_REPEAT);
-        glTextureParameteri(textureID, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-        glTextureParameteri(textureID, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        
+        texture.id = textureID;
 
         stbi_image_free(texture.data);
     }
@@ -152,6 +146,12 @@ void GLEngine::loadModelData(Model& model) {
     for (Mesh& mesh : model.meshes) {
         std::vector<VertexType> endpoints = {POSITION, NORMAL, TEXCOORDS, TANGENT, BI_TANGENT, VERTEX_ID};
         mesh.buffer = glutil::loadVertexBuffer(mesh.vertices, mesh.indices, endpoints);
+        
+        if (mesh.bone_data.size() != 0 && model.scene->mAnimations > 0) {
+            glCreateBuffers(1, &mesh.SSBO);
+            glNamedBufferStorage(mesh.SSBO, sizeof(VertexBoneData) * mesh.bone_data.size(),
+                mesh.bone_data.data(), GL_DYNAMIC_STORAGE_BIT);
+        }
 
         for (std::string& path : mesh.texture_paths) {
             for (unsigned int j = 0; j < model.textures_loaded.size(); j++) {
@@ -161,6 +161,50 @@ void GLEngine::loadModelData(Model& model) {
                 }
             }
         }
+    }
+}
+
+void GLEngine::handleEvents() {
+    SDL_Event event;
+    SDL_Keycode type;
+    ImGuiIO& io = ImGui::GetIO(); (void)io;
+
+    while (SDL_PollEvent(&event)) {
+        ImGui_ImplSDL2_ProcessEvent(&event);
+        if (event.type == SDL_QUIT) {
+            closedWindow = true;
+        } else if (event.type == SDL_KEYUP) {
+            type = event.key.keysym.sym;
+            if (type >= SDLK_RIGHT && type <= SDLK_UP) keyDown[type - SDLK_RIGHT] = false;
+        } else if (event.type == SDL_KEYDOWN) {
+            type = event.key.keysym.sym;
+            if (type >= SDLK_RIGHT && type <= SDLK_UP) keyDown[type - SDLK_RIGHT] = true;
+        } else if (event.type == SDL_MOUSEMOTION && (!io.WantCaptureMouse || ImGuizmo::IsOver())) {
+            mouse_callback(event.motion.x, event.motion.y);
+        } else if (event.type == SDL_MOUSEWHEEL) {
+            scroll_callback(event.wheel.y);
+        } else if (event.type == SDL_WINDOWEVENT
+            && event.window.event == SDL_WINDOWEVENT_RESIZED) {
+            framebuffer_callback(event.window.data1, event.window.data2);
+        } else if (event.type == SDL_MOUSEBUTTONDOWN) {
+            handleClick(event.motion.x, event.motion.y);
+        }
+    }
+
+    for (int i = 0; i < 4; i++) {
+        type = keyDown[i] ? SDLK_RIGHT + i : 0;
+
+        if (type == SDLK_UP)
+            camera.processKeyboard(FORWARD, deltaTime);
+        
+        if (type == SDLK_DOWN)
+            camera.processKeyboard(BACKWARD, deltaTime);
+
+        if (type == SDLK_LEFT)
+            camera.processKeyboard(LEFT, deltaTime);
+
+        if (type == SDLK_RIGHT)
+            camera.processKeyboard(RIGHT, deltaTime);
     }
 }
 

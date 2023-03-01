@@ -1,5 +1,5 @@
 #include "gl_engine.h"
-#include "gl_funcs.h"
+#include "utils/gl_funcs.h"
 
 #include <iostream>
 #include <iterator>
@@ -18,15 +18,32 @@
 void RenderEngine::init_resources() {
     camera = Camera(glm::vec3(0.0f, 0.0f, 7.0f));
     
-    pipeline = Shader("../../shaders/animation/model.vs", "../../shaders/shadowPoints/model.fs");
+    pipeline = Shader("../../shaders/model.vs", "../../shaders/shadowPoints/model.fs");
     mapPipeline = Shader("../../shaders/cubemap/map.vs", "../../shaders/cubemap/map.fs");
-    shadowmapPipeline = Shader("../../shaders/shadows/map.vs", "../../shaders/shadows/map.fs");
+    cascadeMapPipeline = Shader("../../shaders/shadows/cascadeV.glsl", "../../shaders/shadows/map.fs", "../../shaders/shadows/cascadeG.glsl");
     depthCubemapPipeline = Shader("../../shaders/shadowPoints/map.vs", "../../shaders/shadowPoints/map.fs",
         "../../shaders/shadowPoints/map.gs");
     
-    Model newModel("../../resources/objects/trooper/scene.gltf");
+    Model newModel("../../resources/objects/backpack/backpack.obj");
     loadModelData(newModel);
     usableObjs.push_back(newModel);
+
+    glCreateBuffers(1, &matricesUBO);
+    glNamedBufferData(matricesUBO, sizeof(glm::mat4x4) * 16, nullptr, GL_STATIC_DRAW);
+    glBindBufferBase(GL_UNIFORM_BUFFER, 0, matricesUBO);
+
+    lightDepthMaps = glutil::createTextureArray(shadowCascadeLevels.size() + 1, depthMapResolution, depthMapResolution, GL_FLOAT, GL_DEPTH_COMPONENT, GL_DEPTH_COMPONENT32F);
+
+    glCreateFramebuffers(1, &dirDepthFBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, dirDepthFBO);
+    glNamedFramebufferTexture(dirDepthFBO, GL_DEPTH_ATTACHMENT, lightDepthMaps, 0);
+    glNamedFramebufferDrawBuffer(dirDepthFBO, GL_NONE);
+    glNamedFramebufferReadBuffer(dirDepthFBO, GL_NONE);
+
+    int status = glCheckNamedFramebufferStatus(dirDepthFBO, GL_FRAMEBUFFER);
+    if (status != GL_FRAMEBUFFER_COMPLETE) {
+        std::cout << "Framebuffer is not complete!" << std::endl;
+    }
 
     for (int i = 0; i < 4; i++) {
         depthCubemaps[i] = glutil::createCubemap(2048, 2048, GL_FLOAT, 0);
@@ -39,78 +56,12 @@ void RenderEngine::init_resources() {
     glNamedFramebufferDrawBuffer(depthFBO, GL_NONE);
     glNamedFramebufferReadBuffer(depthFBO, GL_NONE);
 
-    float planeVertices[] = {
-        // positions            // normals         // texcoords
-         25.0f, -0.5f,  25.0f,  0.0f, 1.0f, 0.0f,  1.0f,  0.0f,
-        -25.0f, -0.5f,  25.0f,  0.0f, 1.0f, 0.0f,   0.0f,  0.0f,
-        -25.0f, -0.5f, -25.0f,  0.0f, 1.0f, 0.0f,   0.0f, 1.0f,
-
-         25.0f, -0.5f,  25.0f,  0.0f, 1.0f, 0.0f,  1.0f,  0.0f,
-        -25.0f, -0.5f, -25.0f,  0.0f, 1.0f, 0.0f,   0.0f, 1.0f,
-         25.0f, -0.5f, -25.0f,  0.0f, 1.0f, 0.0f,  1.0f, 1.0f
-    };
-    std::vector<float> newPlaneVertices(std::begin(planeVertices), std::end(planeVertices));
-    planeBuffer = glutil::loadVertexBuffer(newPlaneVertices);
+    planeBuffer = glutil::createPlane();
     planeTexture = glutil::loadTexture("../../resources/textures/wood.png");
 
-    float skyboxVertices[] = {
-        // positions          
-        -1.0f,  1.0f, -1.0f,
-        -1.0f, -1.0f, -1.0f,
-        1.0f, -1.0f, -1.0f,
-        1.0f, -1.0f, -1.0f,
-        1.0f,  1.0f, -1.0f,
-        -1.0f,  1.0f, -1.0f,
+    cubemapBuffer = glutil::createUnitCube();
 
-        -1.0f, -1.0f,  1.0f,
-        -1.0f, -1.0f, -1.0f,
-        -1.0f,  1.0f, -1.0f,
-        -1.0f,  1.0f, -1.0f,
-        -1.0f,  1.0f,  1.0f,
-        -1.0f, -1.0f,  1.0f,
-
-        1.0f, -1.0f, -1.0f,
-        1.0f, -1.0f,  1.0f,
-        1.0f,  1.0f,  1.0f,
-        1.0f,  1.0f,  1.0f,
-        1.0f,  1.0f, -1.0f,
-        1.0f, -1.0f, -1.0f,
-
-        -1.0f, -1.0f,  1.0f,
-        -1.0f,  1.0f,  1.0f,
-        1.0f,  1.0f,  1.0f,
-        1.0f,  1.0f,  1.0f,
-        1.0f, -1.0f,  1.0f,
-        -1.0f, -1.0f,  1.0f,
-
-        -1.0f,  1.0f, -1.0f,
-        1.0f,  1.0f, -1.0f,
-        1.0f,  1.0f,  1.0f,
-        1.0f,  1.0f,  1.0f,
-        -1.0f,  1.0f,  1.0f,
-        -1.0f,  1.0f, -1.0f,
-
-        -1.0f, -1.0f, -1.0f,
-        -1.0f, -1.0f,  1.0f,
-        1.0f, -1.0f, -1.0f,
-        1.0f, -1.0f, -1.0f,
-        -1.0f, -1.0f,  1.0f,
-        1.0f, -1.0f,  1.0f
-    };
-    std::vector<float> newSkyboxVertices(std::begin(skyboxVertices), std::end(skyboxVertices));
-    std::vector<VertexType> types = {POSITION};
-    cubemapBuffer = glutil::loadVertexBuffer(newSkyboxVertices, types);
-
-    float quadVertices[] = {
-        // positions        // texture Coords
-        -1.0f,  1.0f, 0.0f, 0.0f, 1.0f,
-        -1.0f, -1.0f, 0.0f, 0.0f, 0.0f,
-            1.0f,  1.0f, 0.0f, 1.0f, 1.0f,
-            1.0f, -1.0f, 0.0f, 1.0f, 0.0f,
-    };
-    types = {POSITION, TEXCOORDS};
-    std::vector<float> newQuadVertices(std::begin(quadVertices), std::end(quadVertices));
-    quadBuffer = glutil::loadVertexBuffer(newQuadVertices, types);
+    quadBuffer = glutil::createScreenQuad();
 
     std::string cubemapPath = "../../resources/textures/skybox/";
     cubemapTexture = glutil::loadCubemap(cubemapPath);
@@ -133,16 +84,9 @@ void RenderEngine::init_resources() {
         pointLights[i].diffuse = glm::vec3(0.05f * i, 0.05f * i, 0.05f * i);
         pointLights[i].position = pointLightPositions[i];
     }
-
-    computePipeline = ComputeShader("../../shaders/compute/tutorial.glsl");
-
-    imgTexture = glutil::createTexture(imgWidth, imgHeight, GL_FLOAT, GL_RGBA, GL_RGBA32F, nullptr);
-    glBindImageTexture(0, imgTexture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
 }
 
 void RenderEngine::run() {
-    bool closedWindow = false;
-    SDL_Event event;
     float shininess = 100.0;
     std::string path = "";
     glm::vec3 translate = glm::vec3(0.0), rotation = glm::vec3(0.0), scale = glm::vec3(1.0);
@@ -158,88 +102,69 @@ void RenderEngine::run() {
         lastFrame = currentFrame;
         animationTime = (currentFrame - startTime) / 1000.0f;
 
-        while (SDL_PollEvent(&event)) {
-            ImGui_ImplSDL2_ProcessEvent(&event);
-            if (event.type == SDL_QUIT) {
-                closedWindow = true;
-            } else if (event.type == SDL_KEYDOWN) {
-                SDL_Keycode type = event.key.keysym.sym;
-
-                if (type == SDLK_UP)
-                    camera.processKeyboard(FORWARD, deltaTime);
-                
-                if (type == SDLK_DOWN)
-                    camera.processKeyboard(BACKWARD, deltaTime);
-
-                if (type == SDLK_LEFT)
-                    camera.processKeyboard(LEFT, deltaTime);
-
-                if (type == SDLK_RIGHT)
-                    camera.processKeyboard(RIGHT, deltaTime);
-            } else if (event.type == SDL_MOUSEMOTION && (!io.WantCaptureMouse || ImGuizmo::IsOver())) {
-                mouse_callback(event.motion.x, event.motion.y);
-            } else if (event.type == SDL_MOUSEWHEEL) {
-                scroll_callback(event.wheel.y);
-            } else if (event.type == SDL_WINDOWEVENT
-                && event.window.event == SDL_WINDOWEVENT_RESIZED) {
-                framebuffer_callback(event.window.data1, event.window.data2);
-            } else if (event.type == SDL_MOUSEBUTTONDOWN) {
-                handleClick(event.motion.x, event.motion.y);
-            }
-        }
-        glm::mat4 inverseView = glm::inverse(camera.getViewMatrix());
-        computePipeline.use();
-        computePipeline.setFloat("t", currentFrame * 0.01);
-        computePipeline.setMat4("inverseView", inverseView);
-        glDispatchCompute((unsigned int) imgWidth/8, (unsigned int) imgHeight/4, 1);
-
         glClearColor(1.0, 0.0, 0.0, 1.0);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
+        handleEvents();
+
+        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)WINDOW_WIDTH/ (float)WINDOW_HEIGHT, 0.1f, 100.0f);
+        glm::mat4 view = camera.getViewMatrix();
+
+        // Cascaded Shadow calculation
+        const auto lightMatrices = getLightSpaceMatrices();
+        glNamedBufferSubData(matricesUBO, 0, sizeof(glm::mat4x4) * lightMatrices.size(), lightMatrices.data());
+
+        glViewport(0, 0, depthMapResolution, depthMapResolution);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, dirDepthFBO);
+            cascadeMapPipeline.use();
+            renderScene(cascadeMapPipeline, true);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        // Shadow Cubemap Calculation
         glViewport(0, 0, 2048, 2048);
         glBindFramebuffer(GL_FRAMEBUFFER, depthFBO);
+            float aspect = (float)shadowWidth / (float)shadowHeight;
+            float near = 1.0f;
+            float far = 25.0f;
+            glm::mat4 shadowProj = glm::perspective(glm::radians(90.0f), aspect, near, far);
+            glm::mat4 planeModel = glm::mat4(1.0f);
+            planeModel = glm::translate(planeModel, glm::vec3(0.0, -2.0, 0.0));
 
-        float aspect = (float)shadowWidth / (float)shadowHeight;
-        float near = 1.0f;
-        float far = 25.0f;
-        glm::mat4 shadowProj = glm::perspective(glm::radians(90.0f), aspect, near, far);
-        glm::mat4 planeModel = glm::mat4(1.0f);
-        planeModel = glm::translate(planeModel, glm::vec3(0.0, -2.0, 0.0));
+            depthCubemapPipeline.use();
 
-        depthCubemapPipeline.use();
+            for (int i = 0; i < 4; i++) {
+                glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, depthCubemaps[i], 0);
+                glClear(GL_DEPTH_BUFFER_BIT);
 
-        for (int i = 0; i < 4; i++) {
-            glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, depthCubemaps[i], 0);
-            glClear(GL_DEPTH_BUFFER_BIT);
+                glm::vec3 lightPos = pointLights[i].position;
+                std::vector<glm::mat4> shadowTransforms;
+                shadowTransforms.push_back(shadowProj * 
+                    glm::lookAt(lightPos, lightPos + glm::vec3( 1.0, 0.0, 0.0), glm::vec3(0.0,-1.0, 0.0)));
+                shadowTransforms.push_back(shadowProj * 
+                    glm::lookAt(lightPos, lightPos + glm::vec3(-1.0, 0.0, 0.0), glm::vec3(0.0,-1.0, 0.0)));
+                shadowTransforms.push_back(shadowProj * 
+                    glm::lookAt(lightPos, lightPos + glm::vec3( 0.0, 1.0, 0.0), glm::vec3(0.0, 0.0, 1.0)));
+                shadowTransforms.push_back(shadowProj * 
+                    glm::lookAt(lightPos, lightPos + glm::vec3( 0.0,-1.0, 0.0), glm::vec3(0.0, 0.0,-1.0)));
+                shadowTransforms.push_back(shadowProj * 
+                    glm::lookAt(lightPos, lightPos + glm::vec3( 0.0, 0.0, 1.0), glm::vec3(0.0,-1.0, 0.0)));
+                shadowTransforms.push_back(shadowProj * 
+                    glm::lookAt(lightPos, lightPos + glm::vec3( 0.0, 0.0,-1.0), glm::vec3(0.0,-1.0, 0.0)));
 
-            glm::vec3 lightPos = pointLights[i].position;
-            std::vector<glm::mat4> shadowTransforms;
-            shadowTransforms.push_back(shadowProj * 
-                 glm::lookAt(lightPos, lightPos + glm::vec3( 1.0, 0.0, 0.0), glm::vec3(0.0,-1.0, 0.0)));
-            shadowTransforms.push_back(shadowProj * 
-                 glm::lookAt(lightPos, lightPos + glm::vec3(-1.0, 0.0, 0.0), glm::vec3(0.0,-1.0, 0.0)));
-            shadowTransforms.push_back(shadowProj * 
-                 glm::lookAt(lightPos, lightPos + glm::vec3( 0.0, 1.0, 0.0), glm::vec3(0.0, 0.0, 1.0)));
-            shadowTransforms.push_back(shadowProj * 
-                 glm::lookAt(lightPos, lightPos + glm::vec3( 0.0,-1.0, 0.0), glm::vec3(0.0, 0.0,-1.0)));
-            shadowTransforms.push_back(shadowProj * 
-                 glm::lookAt(lightPos, lightPos + glm::vec3( 0.0, 0.0, 1.0), glm::vec3(0.0,-1.0, 0.0)));
-            shadowTransforms.push_back(shadowProj * 
-                glm::lookAt(lightPos, lightPos + glm::vec3( 0.0, 0.0,-1.0), glm::vec3(0.0,-1.0, 0.0)));
+                for (int i = 0; i < 6; i++) {
+                    depthCubemapPipeline.setMat4("shadowMatrices[" + std::to_string(i)+ "]", shadowTransforms[i]);
+                }
+                depthCubemapPipeline.setVec3("lightPos", lightPos);
+                depthCubemapPipeline.setFloat("far_plane", far);
 
-            for (int i = 0; i < 6; i++) {
-                depthCubemapPipeline.setMat4("shadowMatrices[" + std::to_string(i)+ "]", shadowTransforms[i]);
+                drawModels(depthCubemapPipeline, true);
+
+                depthCubemapPipeline.setMat4("model", planeModel);
+                glBindVertexArray(planeBuffer.VAO);
+                glDrawArrays(GL_TRIANGLES, 0, 6);
             }
-            depthCubemapPipeline.setVec3("lightPos", lightPos);
-            depthCubemapPipeline.setFloat("far_plane", far);
-
-            drawModels(depthCubemapPipeline, true);
-
-            depthCubemapPipeline.setMat4("model", planeModel);
-            glBindVertexArray(planeBuffer.VAO);
-            glDrawArrays(GL_TRIANGLES, 0, 6);
-        }
-
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
         glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
@@ -291,7 +216,7 @@ void RenderEngine::run() {
                 ImGui::SliderInt("Animation", &chosenAnimation, 0, usableObjs[chosenObjIndex].numAnimations-1);
                 if (ImGui::SliderFloat3("Translation", (float*)&translate, -10.0, 10.0)
                     || ImGui::SliderFloat3("Rotation", (float*)&rotation, 0.0, 90.0)
-                    || ImGui::SliderFloat3("Scale", (float*)&scale, 1.0, 10.0)) {
+                    || ImGui::SliderFloat3("Scale", (float*)&scale, 0.01f, 1.0f)) {
                     glm::mat4 transformation = glm::mat4(1.0f);
                     transformation = glm::translate(transformation, translate);
                     transformation = glm::scale(transformation, scale);
@@ -315,6 +240,11 @@ void RenderEngine::run() {
         }
         ImGui::End();
 
+        ImGuizmo::SetOrthographic(false);
+        ImGuizmo::SetRect(0, 0, io.DisplaySize.x, io.DisplaySize.y);
+        ImGuizmo::Manipulate(glm::value_ptr(view), glm::value_ptr(projection), operation,
+            ImGuizmo::LOCAL, glm::value_ptr(usableObjs[chosenObjIndex].model_matrix));
+
         if (importedObjs.size() != 0) {
             Model model = importedObjs[0];
             loadModelData(model);
@@ -324,14 +254,6 @@ void RenderEngine::run() {
         }
 
         pipeline.use();
-
-        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)WINDOW_WIDTH/ (float)WINDOW_HEIGHT, 0.1f, 100.0f);
-        glm::mat4 view = camera.getViewMatrix();
-
-        ImGuizmo::SetOrthographic(false);
-        ImGuizmo::SetRect(0, 0, io.DisplaySize.x, io.DisplaySize.y);
-        ImGuizmo::Manipulate(glm::value_ptr(view), glm::value_ptr(projection), operation,
-            ImGuizmo::LOCAL, glm::value_ptr(usableObjs[chosenObjIndex].model_matrix));
 
         pipeline.setMat4("projection", projection);
         pipeline.setMat4("view", view);
@@ -354,9 +276,17 @@ void RenderEngine::run() {
 
         pipeline.setVec3("viewPos", camera.Position);
 
-        glActiveTexture(GL_TEXTURE3);
-        glBindTexture(GL_TEXTURE_2D, depthMap);
+        glBindTextureUnit(3, depthMap);
         pipeline.setInt("shadowMap", 3);
+
+        pipeline.setInt("cascadeCount", shadowCascadeLevels.size());
+        for (size_t i = 0; i < shadowCascadeLevels.size(); i++) {
+            pipeline.setFloat("cascadePlaneDistances[" + std::to_string(i) + "]", shadowCascadeLevels[i]);
+        }
+        glActiveTexture(GL_TEXTURE8);
+        glBindTexture(GL_TEXTURE_2D_ARRAY, lightDepthMaps);
+        pipeline.setInt("cascadedMap", 8);
+        pipeline.setMat4("view", view);
 
         for (int i = 0; i < 4; i++) {
             glActiveTexture(GL_TEXTURE4 + i);
@@ -364,16 +294,7 @@ void RenderEngine::run() {
             pipeline.setInt("shadowMaps[" + std::to_string(i) + "]", 4 + i);
         }
 
-        drawModels(pipeline);
-
-        glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-
-        pipeline.setMat4("model", planeModel);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, imgTexture);
-        pipeline.setInt("diffuseTexture", 0);
-        pipeline.setInt("shadowMap", 3);
-        glBindVertexArray(planeBuffer.VAO);
+        renderScene(pipeline);
 
         glDepthFunc(GL_LEQUAL);
         glm::mat4 convertedView = glm::mat4(glm::mat3(view));
@@ -393,107 +314,92 @@ void RenderEngine::run() {
     }
 }
 
-void RenderEngine::drawModels(Shader& shader, bool skipTextures) {
-    for (Model& model : usableObjs) {
-        shader.setMat4("model", model.model_matrix);
+void RenderEngine::renderScene(Shader& shader, bool skipTextures) {
+    drawModels(shader, skipTextures);
 
-        for (int j = 0; j < model.meshes.size(); j++) {
-            Mesh& mesh = model.meshes[j];
-            if (!skipTextures) {
-                unsigned int diffuseNr = 1;
-                unsigned int specularNr = 1;
-                unsigned int normalNr = 1;
-                unsigned int heightNr = 1;
+    glm::mat4 planeModel = glm::mat4(1.0f);
+    planeModel = glm::translate(planeModel, glm::vec3(0.0, -2.0, 0.0));
 
-                for (unsigned int i = 0; i < mesh.textures.size(); i++) {
-                    glActiveTexture(GL_TEXTURE0 + i);
-
-                    string number;
-                    string name = mesh.textures[i].type;
-                    
-                    if (name == "texture_diffuse")
-                        number = std::to_string(diffuseNr++);
-                    else if (name == "texture_specular")
-                        number = std::to_string(specularNr++);
-                    else if (name == "texture_normal")
-                        number = std::to_string(normalNr++);
-                    else if (name == "texture_height")
-                        number = std::to_string(heightNr++);
-
-                    string key = name + number;
-                    shader.setInt(key.c_str(), i);
-
-                    glBindTexture(GL_TEXTURE_2D, mesh.textures[i].id);
-                }
-                glActiveTexture(GL_TEXTURE0);
-
-                if (mesh.bone_data.size() != 0) {
-                    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, mesh.SSBO);
-
-                    mesh.getBoneTransforms(animationTime, model.scene, model.nodes, chosenAnimation);
-                    std::string boneString = "boneMatrices[";
-                    for (unsigned int i = 0; i < mesh.bone_info.size(); i++) {
-                        shader.setMat4(boneString + std::to_string(i) + "]", 
-                            mesh.bone_info[i].finalTransform);
-                    }
-                }
-            }
-
-            glBindVertexArray(mesh.buffer.VAO);
-            glDrawElements(GL_TRIANGLES, mesh.indices.size(), GL_UNSIGNED_INT, 0);
-            glBindVertexArray(0);
-        }
+    if (!skipTextures) {
+        glBindTextureUnit(0, planeTexture);
+        shader.setInt("diffuseTexture", 0);
     }
+    shader.setMat4("model", planeModel);
+    glBindVertexArray(planeBuffer.VAO);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
 }
 
-void RenderEngine::loadModelData(Model& model) {
-    for (Texture& texture : model.textures_loaded) {
-        unsigned int textureID;
-        glCreateTextures(GL_TEXTURE_2D, 1, &textureID);
-        texture.id = textureID;
+std::vector<glm::mat4> RenderEngine::getLightSpaceMatrices() {
+    std::vector<glm::mat4> result;
 
-        GLenum format;
-        GLenum storageFormat;
-        if (texture.nrComponents == 1) {
-            format = GL_RED;
-            storageFormat = GL_R8;
-        } else if (texture.nrComponents == 3) {
-            format = GL_RGB;
-            storageFormat = GL_RGB8;
-        } else if (texture.nrComponents == 4) {
-            format = GL_RGBA;
-            storageFormat = GL_RGBA8;
-        }
-
-        glTextureStorage2D(textureID, 1, storageFormat, texture.width, texture.height);
-        glTextureSubImage2D(textureID, 0, 0, 0, texture.width, texture.height, format, GL_UNSIGNED_BYTE, texture.data);
-        glGenerateTextureMipmap(textureID);
-
-        glTextureParameteri(textureID, GL_TEXTURE_WRAP_S, GL_REPEAT);
-        glTextureParameteri(textureID, GL_TEXTURE_WRAP_T, GL_REPEAT);
-        glTextureParameteri(textureID, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-        glTextureParameteri(textureID, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-        stbi_image_free(texture.data);
+    for (int i = 0; i < shadowCascadeLevels.size() + 1; i++) {
+        if (i == 0)
+            result.push_back(getLightSpaceMatrix(cameraNearPlane, shadowCascadeLevels[i]));
+        else if (i < shadowCascadeLevels.size())
+            result.push_back(getLightSpaceMatrix(shadowCascadeLevels[i-1], shadowCascadeLevels[i]));
+        else
+            result.push_back(getLightSpaceMatrix(shadowCascadeLevels[i-1], cameraFarPlane));
     }
 
-    for (Mesh& mesh : model.meshes) {
-        std::vector<VertexType> endpoints = {POSITION, NORMAL, TEXCOORDS, TANGENT, BI_TANGENT, VERTEX_ID};
-        mesh.buffer = glutil::loadVertexBuffer(mesh.vertices, mesh.indices, endpoints);
-        
-        if (mesh.bone_data.size() != 0) {
-            glCreateBuffers(1, &mesh.SSBO);
-            glNamedBufferStorage(mesh.SSBO, sizeof(VertexBoneData) * mesh.bone_data.size(),
-                mesh.bone_data.data(), GL_DYNAMIC_STORAGE_BIT);
-        }
+    return result;
+}
 
-        for (std::string& path : mesh.texture_paths) {
-            for (unsigned int j = 0; j < model.textures_loaded.size(); j++) {
-                if (std::strcmp(model.textures_loaded[j].path.data(), path.c_str()) == 0) {
-                    mesh.textures.push_back(model.textures_loaded[j]);
-                    break;
-                }
+glm::mat4 RenderEngine::getLightSpaceMatrix(float nearPlane, float farPlane) {
+    const auto proj = glm::perspective(
+        glm::radians(camera.Zoom), (float)WINDOW_WIDTH / (float)WINDOW_HEIGHT, nearPlane,
+        farPlane);
+    auto corners = getFrustumCornerWorldSpace(proj, camera.getViewMatrix());
+
+    glm::vec3 center(0, 0, 0);
+    for (const auto& v : corners) center += glm::vec3(v);
+    center /= corners.size();
+
+    const auto lightView = glm::lookAt(center + directionLight.direction, center, glm::vec3(0.0f, 1.0f, 0.0f));
+
+    float minX = std::numeric_limits<float>::max();
+    float maxX = std::numeric_limits<float>::lowest();
+    float minY = std::numeric_limits<float>::max();
+    float maxY = std::numeric_limits<float>::lowest();
+    float minZ = std::numeric_limits<float>::max();
+    float maxZ = std::numeric_limits<float>::lowest();
+    for (const auto& v : corners)
+    {
+        const auto trf = lightView * v;
+        minX = std::min(minX, trf.x);
+        maxX = std::max(maxX, trf.x);
+        minY = std::min(minY, trf.y);
+        maxY = std::max(maxY, trf.y);
+        minZ = std::min(minZ, trf.z);
+        maxZ = std::max(maxZ, trf.z);
+    }
+
+    float zMult = 10.0f;
+    if (minZ < 0) minZ *= zMult;
+    else minZ /= zMult;
+
+    if (maxZ < 0) maxZ /= zMult;
+    else maxZ *= zMult;
+
+    const glm::mat4 lightProjection = glm::ortho(minX, maxX, minY, maxY, minZ, maxZ);
+    return lightProjection * lightView;
+}
+
+std::vector<glm::vec4> RenderEngine::getFrustumCornerWorldSpace(const glm::mat4& proj, const glm::mat4& view) {
+    const auto inv = glm::inverse(proj * view);
+
+    std::vector<glm::vec4> frustumCorners;
+    for (unsigned int x = 0; x < 2; x++) {
+        for (unsigned int y = 0; y < 2; y++) {
+            for (unsigned int z = 0; z < 2; z++) {
+                const glm::vec4 pt = inv * glm::vec4(
+                    2.0f * x - 1.0f,
+                    2.0f * y - 1.0f,
+                    2.0f * z - 1.0f,
+                    1.0f);
+                frustumCorners.push_back(pt / pt.w);
             }
         }
     }
+
+    return frustumCorners;
 }

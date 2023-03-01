@@ -7,9 +7,11 @@ add_library(gl_tools
     engine/gl_compute_eng.cpp
     engine/gl_deferred_eng.h
     engine/gl_deferred_eng.cpp
-    engine/gl_funcs.h
-    engine/gl_funcs.cpp
+    engine/gl_pbr_engine.h
+    engine/gl_pbr_engine.cpp
 
+    utils/gl_funcs.h
+    utils/gl_funcs.cpp
     utils/camera.h
     utils/camera.cpp
     utils/gl_model.h
@@ -30,6 +32,9 @@ add_executable(compute_engine
 add_executable(deferred_engine
     exes/deferredDemo.cpp)
 
+add_executable(pbr_engine
+    exes/pbrDemo.cpp)
+
 target_include_directories(gl_tools PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${PROJECT_SOURCE_DIR}/include)
@@ -45,3 +50,4 @@ target_link_libraries(gl_tools glad glm stb_image imgui imGuizmo sdl2 ${GLFW_LIB
 target_link_libraries(gl_engine gl_tools)
 target_link_libraries(compute_engine gl_tools)
 target_link_libraries(deferred_engine gl_tools)
+target_link_libraries(pbr_engine gl_tools)
