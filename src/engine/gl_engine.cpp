@@ -29,13 +29,13 @@ void RenderEngine::init_resources() {
     usableObjs.push_back(newModel);
 
     for (int i = 0; i < 4; i++) {
-        depthCubemaps[i] = glutil::createCubemap(2048, 2048, GL_FLOAT, 0);
+        depthCubemaps[i] = glutil::createCubemap(2048, 2048, GL_FLOAT, GL_DEPTH_COMPONENT, GL_DEPTH_COMPONENT);
     }
 
     glCreateFramebuffers(1, &depthFBO);
     glCreateTextures(GL_TEXTURE_2D, 1, &depthMap);
     glTextureStorage2D(depthMap, 1, GL_DEPTH_COMPONENT32F, 2048, 2048);
-    glNamedFramebufferTexture(depthFBO, GL_DEPTH_ATTACHMENT, depthMap, 0);
+    glNamedFramebufferTexture(depthFBO, GL_DEPTH_ATTACHMENT, depthCubemaps[0], 0);
     glNamedFramebufferDrawBuffer(depthFBO, GL_NONE);
     glNamedFramebufferReadBuffer(depthFBO, GL_NONE);
 
@@ -75,7 +75,6 @@ void RenderEngine::init_resources() {
     lightDepthMaps = glutil::createTextureArray(shadowCascadeLevels.size() + 1, depthMapResolution, depthMapResolution, GL_FLOAT, GL_DEPTH_COMPONENT, GL_DEPTH_COMPONENT32F);
 
     glCreateFramebuffers(1, &dirDepthFBO);
-    glBindFramebuffer(GL_FRAMEBUFFER, dirDepthFBO);
     glNamedFramebufferTexture(dirDepthFBO, GL_DEPTH_ATTACHMENT, lightDepthMaps, 0);
     glNamedFramebufferDrawBuffer(dirDepthFBO, GL_NONE);
     glNamedFramebufferReadBuffer(dirDepthFBO, GL_NONE);
@@ -102,25 +101,27 @@ void RenderEngine::run() {
         lastFrame = currentFrame;
         animationTime = (currentFrame - startTime) / 1000.0f;
 
-        glClearColor(1.0, 0.0, 0.0, 1.0);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-
         handleEvents();
 
-        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)WINDOW_WIDTH/ (float)WINDOW_HEIGHT, 0.1f, 100.0f);
-        glm::mat4 view = camera.getViewMatrix();
+        glClearColor(1.0, 0.0, 0.0, 1.0);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
         // Cascaded Shadow calculation
         const auto lightMatrices = getLightSpaceMatrices();
         glNamedBufferSubData(matricesUBO, 0, sizeof(glm::mat4x4) * lightMatrices.size(), lightMatrices.data());
 
-        glViewport(0, 0, depthMapResolution, depthMapResolution);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        cascadeMapPipeline.use();
 
         glBindFramebuffer(GL_FRAMEBUFFER, dirDepthFBO);
-            cascadeMapPipeline.use();
+            glViewport(0, 0, depthMapResolution, depthMapResolution);
+            glClear(GL_DEPTH_BUFFER_BIT);
+
+            glCullFace(GL_FRONT);
             renderScene(cascadeMapPipeline, true);
+            glCullFace(GL_BACK);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        depthCubemapPipeline.use();
 
         // Shadow Cubemap Calculation
         glViewport(0, 0, 2048, 2048);
@@ -131,8 +132,6 @@ void RenderEngine::run() {
             glm::mat4 shadowProj = glm::perspective(glm::radians(90.0f), aspect, near, far);
             glm::mat4 planeModel = glm::mat4(1.0f);
             planeModel = glm::translate(planeModel, glm::vec3(0.0, -2.0, 0.0));
-
-            depthCubemapPipeline.use();
 
             for (int i = 0; i < 4; i++) {
                 glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, depthCubemaps[i], 0);
@@ -239,6 +238,9 @@ void RenderEngine::run() {
             }
         }
         ImGui::End();
+
+        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)WINDOW_WIDTH/ (float)WINDOW_HEIGHT, 0.1f, 100.0f);
+        glm::mat4 view = camera.getViewMatrix();
 
         ImGuizmo::SetOrthographic(false);
         ImGuizmo::SetRect(0, 0, io.DisplaySize.x, io.DisplaySize.y);

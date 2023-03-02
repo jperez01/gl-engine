@@ -153,7 +153,7 @@ float cascadedShadowCalculation(vec3 fragPosWorldSpace, vec3 lightDir) {
 }
 
 vec3 calcDirLight(DirLight light, vec3 normal, vec3 viewDir) {
-    vec3 lightDir = normalize(-light.direction);
+    vec3 lightDir = normalize(light.direction);
 
     float diff = max(dot(normal, lightDir), 0.0);
 

@@ -36,6 +36,10 @@ class RenderEngine : public GLEngine {
         unsigned int matricesUBO;
         std::vector<float> shadowCascadeLevels = { cameraFarPlane / 50.0f, cameraFarPlane / 25.0f, cameraFarPlane / 10.0f, cameraFarPlane / 2.0f };
 
+        std::vector<GLuint> visualizerVAOs;
+        std::vector<GLuint> visualizerVBOs;
+        std::vector<GLuint> visualizerEBOs;
+
         Shader pipeline;
         Shader mapPipeline;
         Shader cascadeMapPipeline;
@@ -45,6 +49,8 @@ class RenderEngine : public GLEngine {
         DirLight directionLight;
 
         void renderScene(Shader& shader, bool skipTextures = false);
+
+        void drawCascadeVolumeVisualizers(const std::vector<glm::mat4>& lightMatrices, Shader* shader);
 
         std::vector<glm::mat4> getLightSpaceMatrices();
         glm::mat4 getLightSpaceMatrix(float nearPlane, float farPlane);
