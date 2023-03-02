@@ -18,7 +18,7 @@
 void RenderEngine::init_resources() {
     camera = Camera(glm::vec3(0.0f, 0.0f, 7.0f));
     
-    pipeline = Shader("../../shaders/model.vs", "../../shaders/shadowPoints/model.fs");
+    pipeline = Shader("../../shaders/shadowPoints/model.vs", "../../shaders/shadowPoints/model.fs");
     mapPipeline = Shader("../../shaders/cubemap/map.vs", "../../shaders/cubemap/map.fs");
     cascadeMapPipeline = Shader("../../shaders/shadows/cascadeV.glsl", "../../shaders/shadows/map.fs", "../../shaders/shadows/cascadeG.glsl");
     depthCubemapPipeline = Shader("../../shaders/shadowPoints/map.vs", "../../shaders/shadowPoints/map.fs",
@@ -27,23 +27,6 @@ void RenderEngine::init_resources() {
     Model newModel("../../resources/objects/backpack/backpack.obj");
     loadModelData(newModel);
     usableObjs.push_back(newModel);
-
-    glCreateBuffers(1, &matricesUBO);
-    glNamedBufferData(matricesUBO, sizeof(glm::mat4x4) * 16, nullptr, GL_STATIC_DRAW);
-    glBindBufferBase(GL_UNIFORM_BUFFER, 0, matricesUBO);
-
-    lightDepthMaps = glutil::createTextureArray(shadowCascadeLevels.size() + 1, depthMapResolution, depthMapResolution, GL_FLOAT, GL_DEPTH_COMPONENT, GL_DEPTH_COMPONENT32F);
-
-    glCreateFramebuffers(1, &dirDepthFBO);
-    glBindFramebuffer(GL_FRAMEBUFFER, dirDepthFBO);
-    glNamedFramebufferTexture(dirDepthFBO, GL_DEPTH_ATTACHMENT, lightDepthMaps, 0);
-    glNamedFramebufferDrawBuffer(dirDepthFBO, GL_NONE);
-    glNamedFramebufferReadBuffer(dirDepthFBO, GL_NONE);
-
-    int status = glCheckNamedFramebufferStatus(dirDepthFBO, GL_FRAMEBUFFER);
-    if (status != GL_FRAMEBUFFER_COMPLETE) {
-        std::cout << "Framebuffer is not complete!" << std::endl;
-    }
 
     for (int i = 0; i < 4; i++) {
         depthCubemaps[i] = glutil::createCubemap(2048, 2048, GL_FLOAT, 0);
@@ -83,6 +66,23 @@ void RenderEngine::init_resources() {
         pointLights[i].specular = glm::vec3(0.05f * i, 0.05f * i, 0.05f * i);
         pointLights[i].diffuse = glm::vec3(0.05f * i, 0.05f * i, 0.05f * i);
         pointLights[i].position = pointLightPositions[i];
+    }
+
+    glCreateBuffers(1, &matricesUBO);
+    glNamedBufferData(matricesUBO, sizeof(glm::mat4x4) * 16, nullptr, GL_STATIC_DRAW);
+    glBindBufferBase(GL_UNIFORM_BUFFER, 0, matricesUBO);
+
+    lightDepthMaps = glutil::createTextureArray(shadowCascadeLevels.size() + 1, depthMapResolution, depthMapResolution, GL_FLOAT, GL_DEPTH_COMPONENT, GL_DEPTH_COMPONENT32F);
+
+    glCreateFramebuffers(1, &dirDepthFBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, dirDepthFBO);
+    glNamedFramebufferTexture(dirDepthFBO, GL_DEPTH_ATTACHMENT, lightDepthMaps, 0);
+    glNamedFramebufferDrawBuffer(dirDepthFBO, GL_NONE);
+    glNamedFramebufferReadBuffer(dirDepthFBO, GL_NONE);
+
+    int status = glCheckNamedFramebufferStatus(dirDepthFBO, GL_FRAMEBUFFER);
+    if (status != GL_FRAMEBUFFER_COMPLETE) {
+        std::cout << "Framebuffer is not complete!" << std::endl;
     }
 }
 
