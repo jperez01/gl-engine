@@ -23,6 +23,9 @@ void RenderEngine::init_resources() {
     cascadeMapPipeline = Shader("../../shaders/shadows/cascadeV.glsl", "../../shaders/shadows/map.fs", "../../shaders/shadows/cascadeG.glsl");
     depthCubemapPipeline = Shader("../../shaders/shadowPoints/map.vs", "../../shaders/shadowPoints/map.fs",
         "../../shaders/shadowPoints/map.gs");
+
+    debugCascadePipeline = Shader("../../shaders/cascade/cascadeDebugV.glsl", "../../shaders/cascade/cascadeDebugF.glsl");
+    debugDepthPipeline = Shader("../../shaders/cascade/mapDebugV.glsl", "../../shaders/cascade/mapDebugF.glsl");
     
     Model newModel("../../resources/objects/backpack/backpack.obj");
     loadModelData(newModel);
@@ -72,7 +75,16 @@ void RenderEngine::init_resources() {
     glNamedBufferData(matricesUBO, sizeof(glm::mat4x4) * 16, nullptr, GL_STATIC_DRAW);
     glBindBufferBase(GL_UNIFORM_BUFFER, 0, matricesUBO);
 
-    lightDepthMaps = glutil::createTextureArray(shadowCascadeLevels.size() + 1, depthMapResolution, depthMapResolution, GL_FLOAT, GL_DEPTH_COMPONENT, GL_DEPTH_COMPONENT32F);
+    glGenTextures(1, &lightDepthMaps);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, lightDepthMaps);
+    glTexImage3D(
+        GL_TEXTURE_2D_ARRAY, 0, GL_DEPTH_COMPONENT32F, depthMapResolution, depthMapResolution, int(shadowCascadeLevels.size()) + 1,
+        0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
+
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
 
     glCreateFramebuffers(1, &dirDepthFBO);
     glNamedFramebufferTexture(dirDepthFBO, GL_DEPTH_ATTACHMENT, lightDepthMaps, 0);
@@ -102,12 +114,14 @@ void RenderEngine::run() {
         animationTime = (currentFrame - startTime) / 1000.0f;
 
         handleEvents();
+        checkFrustum();
 
         glClearColor(1.0, 0.0, 0.0, 1.0);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
         // Cascaded Shadow calculation
-        const auto lightMatrices = getLightSpaceMatrices();
+        auto lightMatrices = getLightSpaceMatrices();
+        if (lightMatricesCache.size() != 0) lightMatrices = lightMatricesCache;
         glNamedBufferSubData(matricesUBO, 0, sizeof(glm::mat4x4) * lightMatrices.size(), lightMatrices.data());
 
         cascadeMapPipeline.use();
@@ -226,6 +240,7 @@ void RenderEngine::run() {
         }
 
         if (ImGui::CollapsingHeader("Extras")) {
+            ImGui::RadioButton("Using Radar", camera.shouldUseRadar);
             ImGui::SliderFloat("Shininess", &shininess, 1, 200);
             if(ImGui::RadioButton("Translate", operation == ImGuizmo::TRANSLATE)) {
                 operation = ImGuizmo::TRANSLATE;
@@ -298,6 +313,16 @@ void RenderEngine::run() {
 
         renderScene(pipeline);
 
+        if (lightMatricesCache.size() != 0) {
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            debugCascadePipeline.use();
+            debugCascadePipeline.setMat4("projection", projection);
+            debugCascadePipeline.setMat4("view", view);
+            drawCascadeVolumeVisualizers(lightMatricesCache, &debugCascadePipeline);
+            glDisable(GL_BLEND);
+        }
+
         glDepthFunc(GL_LEQUAL);
         glm::mat4 convertedView = glm::mat4(glm::mat3(view));
         mapPipeline.use();
@@ -309,10 +334,82 @@ void RenderEngine::run() {
         glDrawArrays(GL_TRIANGLES, 0, 36);
         glDepthFunc(GL_LESS);
 
+        debugDepthPipeline.use();
+        debugDepthPipeline.setInt("layer", debugLayer);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D_ARRAY, lightDepthMaps);
+        if (showQuad) {
+            glBindVertexArray(quadBuffer.VAO);
+            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        }
+
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
         SDL_GL_SwapWindow(window);
+    }
+}
+
+void RenderEngine::handleEvents() {
+    SDL_Event event;
+    SDL_Keycode type;
+    ImGuiIO& io = ImGui::GetIO(); (void)io;
+
+    while (SDL_PollEvent(&event)) {
+            ImGui_ImplSDL2_ProcessEvent(&event);
+            if (event.type == SDL_QUIT) {
+                closedWindow = true;
+            } else if (event.type == SDL_KEYDOWN) {
+                SDL_Keycode type = event.key.keysym.sym;
+
+                if (type == SDLK_UP)
+                    camera.processKeyboard(FORWARD, deltaTime);
+                
+                if (type == SDLK_DOWN)
+                    camera.processKeyboard(BACKWARD, deltaTime);
+
+                if (type == SDLK_LEFT)
+                    camera.processKeyboard(LEFT, deltaTime);
+
+                if (type == SDLK_RIGHT)
+                    camera.processKeyboard(RIGHT, deltaTime);
+                
+                if (type == SDLK_l) camera.shouldUseRadar = !camera.shouldUseRadar;
+                /*
+                if (type == SDLK_c) {
+                    lightMatricesCache = getLightSpaceMatrices();
+                }
+                if (type == SDLK_v) {
+                    lightMatricesCache.clear();
+                }
+
+                if (type == SDLK_q) showQuad = !showQuad;
+                if (type == SDLK_j) {
+                    debugLayer++;
+                    if (debugLayer > shadowCascadeLevels.size()) debugLayer = 0;
+                }
+                */
+            } else if (event.type == SDL_MOUSEMOTION && (!io.WantCaptureMouse || ImGuizmo::IsOver())) {
+                mouse_callback(event.motion.x, event.motion.y);
+            } else if (event.type == SDL_MOUSEWHEEL) {
+                scroll_callback(event.wheel.y);
+            } else if (event.type == SDL_WINDOWEVENT
+                && event.window.event == SDL_WINDOWEVENT_RESIZED) {
+                framebuffer_callback(event.window.data1, event.window.data2);
+            } else if (event.type == SDL_MOUSEBUTTONDOWN) {
+                handleClick(event.motion.x, event.motion.y);
+            }
+        }
+}
+
+void RenderEngine::checkFrustum() {
+    numCulled = 0;
+    for (Model& model : usableObjs) {
+        glm::vec4 transformedMax = model.model_matrix * model.aabb.maxPoint;
+        glm::vec4 transformedMin = model.model_matrix * model.aabb.minPoint;
+
+        model.shouldDraw = camera.isInsideFrustum(transformedMax, transformedMin);
+        if (!model.shouldDraw) numCulled++;
     }
 }
 
@@ -329,6 +426,74 @@ void RenderEngine::renderScene(Shader& shader, bool skipTextures) {
     shader.setMat4("model", planeModel);
     glBindVertexArray(planeBuffer.VAO);
     glDrawArrays(GL_TRIANGLES, 0, 6);
+}
+
+void RenderEngine::drawCascadeVolumeVisualizers(const std::vector<glm::mat4>& lightMatrices, Shader* shader)
+{
+    visualizerVAOs.resize(8);
+    visualizerEBOs.resize(8);
+    visualizerVBOs.resize(8);
+
+    const GLuint indices[] = {
+        0, 2, 3,
+        0, 3, 1,
+        4, 6, 2,
+        4, 2, 0,
+        5, 7, 6,
+        5, 6, 4,
+        1, 3, 7,
+        1, 7, 5,
+        6, 7, 3,
+        6, 3, 2,
+        1, 5, 4,
+        0, 1, 4
+    };
+
+    const glm::vec4 colors[] = {
+        {1.0, 0.0, 0.0, 0.5f},
+        {0.0, 1.0, 0.0, 0.5f},
+        {0.0, 0.0, 1.0, 0.5f},
+    };
+    glm::mat4 someMatrix(1.0f);
+
+    for (int i = 0; i < lightMatrices.size(); ++i)
+    {
+        const auto corners = getFrustumCornerWorldSpace(someMatrix, lightMatrices[i]);
+        std::vector<glm::vec3> vec3s;
+        for (const auto& v : corners)
+        {
+            vec3s.push_back(glm::vec3(v));
+        }
+
+        glGenVertexArrays(1, &visualizerVAOs[i]);
+        glGenBuffers(1, &visualizerVBOs[i]);
+        glGenBuffers(1, &visualizerEBOs[i]);
+
+        glBindVertexArray(visualizerVAOs[i]);
+
+        glBindBuffer(GL_ARRAY_BUFFER, visualizerVBOs[i]);
+        glBufferData(GL_ARRAY_BUFFER, vec3s.size() * sizeof(glm::vec3), &vec3s[0], GL_STATIC_DRAW);
+
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, visualizerEBOs[i]);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, 36 * sizeof(GLuint), &indices[0], GL_STATIC_DRAW);
+
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
+
+        glBindVertexArray(visualizerVAOs[i]);
+        shader->setVec4("color", colors[i % 3]);
+        glDrawElements(GL_TRIANGLES, GLsizei(36), GL_UNSIGNED_INT, 0);
+
+        glDeleteBuffers(1, &visualizerVBOs[i]);
+        glDeleteBuffers(1, &visualizerEBOs[i]);
+        glDeleteVertexArrays(1, &visualizerVAOs[i]);
+
+        glBindVertexArray(0);
+    }
+
+    visualizerVAOs.clear();
+    visualizerEBOs.clear();
+    visualizerVBOs.clear();
 }
 
 std::vector<glm::mat4> RenderEngine::getLightSpaceMatrices() {

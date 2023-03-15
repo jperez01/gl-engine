@@ -20,7 +20,7 @@ class GLEngine {
     protected:
         SDL_Window* window;
         SDL_GLContext gl_context;
-        int WINDOW_WIDTH = 1280, WINDOW_HEIGHT = 720;
+        int WINDOW_WIDTH = 1920, WINDOW_HEIGHT = 1080;
 
         bool closedWindow = false;
         bool keyDown[4] = { false, false, false, false};

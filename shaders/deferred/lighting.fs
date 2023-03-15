@@ -19,6 +19,13 @@ const int NR_LIGHTS = 32;
 uniform Light lights[NR_LIGHTS];
 uniform vec3 viewPos;
 
+struct DirLight {
+    vec3 direction;
+
+    vec3 color;
+};
+uniform DirLight directionalLight;
+
 void main()
 {             
     // retrieve data from gbuffer
@@ -49,5 +56,14 @@ void main()
             lighting += diffuse + specular;  
         }      
     }
+
+    vec3 lightDir = normalize(-directionalLight.direction);
+    vec3 diffuse = max(dot(Normal, lightDir), 0.0) * Diffuse;
+    
+    vec3 halfwayDir = normalize(lightDir + viewDir);
+    float spec = pow(max(dot(Normal, halfwayDir), 0.0), 16.0);
+    vec3 specular = directionalLight.color * spec * Specular;
+    lighting += diffuse + specular;
+
     FragColor = vec4(lighting, 1.0);
 }

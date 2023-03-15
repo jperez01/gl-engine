@@ -9,6 +9,8 @@ add_library(gl_tools
     engine/gl_deferred_eng.cpp
     engine/gl_pbr_engine.h
     engine/gl_pbr_engine.cpp
+    engine/gl_clustered_engine.h
+    engine/gl_clustered_engine.cpp
 
     utils/gl_funcs.h
     utils/gl_funcs.cpp
@@ -35,6 +37,9 @@ add_executable(deferred_engine
 add_executable(pbr_engine
     exes/pbrDemo.cpp)
 
+add_executable(clustered_engine
+    exes/clusteredDemo.cpp)
+
 target_include_directories(gl_tools PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${PROJECT_SOURCE_DIR}/include)
@@ -51,3 +56,4 @@ target_link_libraries(gl_engine gl_tools)
 target_link_libraries(compute_engine gl_tools)
 target_link_libraries(deferred_engine gl_tools)
 target_link_libraries(pbr_engine gl_tools)
+target_link_libraries(clustered_engine gl_tools)

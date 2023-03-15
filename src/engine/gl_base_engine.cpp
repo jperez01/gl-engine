@@ -65,6 +65,7 @@ void GLEngine::run() {}
 
 void GLEngine::drawModels(Shader& shader, bool skipTextures) {
     for (Model& model : usableObjs) {
+        if (!model.shouldDraw) continue;
         shader.setMat4("model", model.model_matrix);
 
         for (int j = 0; j < model.meshes.size(); j++) {
@@ -74,6 +75,15 @@ void GLEngine::drawModels(Shader& shader, bool skipTextures) {
                 unsigned int specularNr = 1;
                 unsigned int normalNr = 1;
                 unsigned int heightNr = 1;
+                unsigned int metallicNr = 1;
+
+                if (mesh.textures.size() != 4) {
+                    shader.setBool("noMetallicMap", true);
+                    shader.setBool("noNormalMap", true);
+                } else {
+                    shader.setBool("noMetallicMap", false);
+                    shader.setBool("noNormalMap", false);
+                }
 
                 for (unsigned int i = 0; i < mesh.textures.size(); i++) {
                     glActiveTexture(GL_TEXTURE0 + i);
@@ -89,6 +99,8 @@ void GLEngine::drawModels(Shader& shader, bool skipTextures) {
                         number = std::to_string(normalNr++);
                     else if (name == "texture_height")
                         number = std::to_string(heightNr++);
+                    else if (name == "texture_metallic")
+                        number = std::to_string(metallicNr++);
 
                     string key = name + number;
                     shader.setInt(key.c_str(), i);

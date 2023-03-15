@@ -62,6 +62,7 @@ class Model {
         bool gammaCorrection;
         glm::mat4 model_matrix;
         BoundingBox aabb;
+        bool shouldDraw = true;
         int numAnimations = 0;
 
         const aiScene* scene;

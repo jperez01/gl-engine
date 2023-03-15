@@ -7,12 +7,14 @@
 ComputeShader::ComputeShader() {}
 
 ComputeShader::ComputeShader(std::string computePath) {
+    std::string generalPath = "../../shaders/";
+    std::string fullPath = generalPath + computePath;
     std::string computeCode;
     std::ifstream computeFile;
 
     computeFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
     try {
-        computeFile.open(computePath);
+        computeFile.open(fullPath);
         std::stringstream computeStream;
 
         computeStream << computeFile.rdbuf();

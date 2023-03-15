@@ -45,9 +45,18 @@ class RenderEngine : public GLEngine {
         Shader cascadeMapPipeline;
         Shader depthCubemapPipeline;
 
+        Shader debugCascadePipeline;
+        std::vector<glm::mat4> lightMatricesCache;
+        Shader debugDepthPipeline;
+        int debugLayer = 0;
+        bool showQuad = false;
+        int numCulled = 0;
+
         PointLight pointLights[4];
         DirLight directionLight;
 
+        void handleEvents();
+        void checkFrustum();
         void renderScene(Shader& shader, bool skipTextures = false);
 
         void drawCascadeVolumeVisualizers(const std::vector<glm::mat4>& lightMatrices, Shader* shader);

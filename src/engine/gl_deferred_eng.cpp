@@ -13,11 +13,11 @@
 void DeferredEngine::init_resources() {
     camera = Camera(glm::vec3(0.0f, 0.0f, 5.0f));
 
-    renderPipeline = Shader("../../shaders/deferred/lighting.vs", "../../shaders/ssr/finalPassF.glsl");
+    renderPipeline = Shader("../../shaders/deferred/lighting.vs", "../../shaders/deferred/lighting.fs");
     gbufferPipeline = Shader("../../shaders/deferred/gbuffer.vs", "../../shaders/deferred/gbuffer.fs");
     ssrPipeline = Shader("../../shaders/deferred/lighting.vs", "../../shaders/ssr/ssrF.glsl");
     
-    Model newModel("../../resources/objects/backpack/backpack.obj");
+    Model newModel("../../resources/objects/sponza/scene.gltf");
     loadModelData(newModel);
     usableObjs.push_back(newModel);
 
@@ -108,6 +108,10 @@ void DeferredEngine::run() {
     glm::mat4 planeModel = glm::mat4(1.0f);
     planeModel = glm::translate(planeModel, glm::vec3(0.0, 0.0, 0.0));
     planeModel = glm::scale(planeModel, glm::vec3(1.0f, 1.5f, 1.0f));
+    float globalRadius = 100.0f;
+
+    glm::vec3 direction(0.0f, 1.0f, 0.0f);
+    glm::vec3 color(1.0f, 1.0f, 1.0f);
 
     ImGuizmo::OPERATION operation = ImGuizmo::OPERATION::TRANSLATE;
 
@@ -146,7 +150,11 @@ void DeferredEngine::run() {
             }
         }
         if (ImGui::CollapsingHeader("Scene Info")) {
+            ImGui::SliderFloat3("Light Direction", (float*)&direction, -1.0f, 1.0f);
+            ImGui::SliderFloat3("Dir Light Color", (float*)&color, 0.0f, 1.0f);
+
             ImGui::SliderFloat("Camera Multiplier", &multiplier, 0.00001f, 0.01f);
+            ImGui::SliderFloat("Global Radius ", &globalRadius, 1.0f, 10000.0f);
 
             if(ImGui::RadioButton("Translate", operation == ImGuizmo::TRANSLATE)) {
                 operation = ImGuizmo::TRANSLATE;
@@ -185,7 +193,7 @@ void DeferredEngine::run() {
             glBindVertexArray(planeBuffer.VAO);
             glDrawArrays(GL_TRIANGLES, 0, 6);
 
-            for (unsigned int i = 0; i < objectPositions.size(); i++) {
+            for (unsigned int i = 0; i < 1; i++) {
                 model = glm::mat4(1.0f);
                 model = glm::translate(model, objectPositions[i]);
                 model = glm::scale(model, glm::vec3(0.1f));
@@ -195,7 +203,8 @@ void DeferredEngine::run() {
                 drawModels(gbufferPipeline);
             }
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        
+
+        /*
         glBindFramebuffer(GL_FRAMEBUFFER, ssrFBO);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
             ssrPipeline.use();
@@ -218,6 +227,7 @@ void DeferredEngine::run() {
             glBindVertexArray(quadBuffer.VAO);
             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        */
         
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -233,6 +243,9 @@ void DeferredEngine::run() {
         renderPipeline.setInt("gAlbedoSpec", 2);
         renderPipeline.setInt("gReflectionColor", 3);
 
+        renderPipeline.setVec3("directionalLight.direction", direction);
+        renderPipeline.setVec3("directionalLight.color", color);
+
         for (unsigned int i = 0; i < lights.size(); i++) {
             std::string name = "lights[" + std::to_string(i) + "].";
             renderPipeline.setVec3(name + "Position", lights[i].position);
@@ -247,7 +260,7 @@ void DeferredEngine::run() {
 
             const float maxBrightness = std::fmaxf(std::fmaxf(lights[i].color.r, lights[i].color.g), lights[i].color.b);
             float radius = (-linear + std::sqrt(linear * linear - 4 * quadratic * (constant - (256.0f / 5.0f) * maxBrightness))) / (2.0f * quadratic);
-            renderPipeline.setFloat(name + "Radius", radius);
+            renderPipeline.setFloat(name + "Radius", globalRadius);
         }
         renderPipeline.setVec3("viewPos", camera.Position);
         
