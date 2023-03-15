@@ -30,7 +30,7 @@ private:
     std::vector<ClusteredLight> lights;
     unsigned int numLights = 16 * 9 * 4;
     unsigned int maxLights = 1000;
-    unsigned int maxLightsPerTile = 50;
+    unsigned int maxLightsPerTile = 200;
     float bias = 0.01f, scale = 1.0f;
 
     ComputeShader tileCreateCompute;

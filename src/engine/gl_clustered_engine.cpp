@@ -40,7 +40,7 @@ void ClusteredEngine::init_resources() {
         light.position = glm::vec4(pos_dist(mt), posy_dist(mt), posz_dist(mt), 1.0f);
         light.enabled = 1;
         light.intensity = 0.1f;
-        light.range = 30.0f;
+        light.range = 40.0f;
 
         lights.push_back(light);
     }
