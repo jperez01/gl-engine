@@ -27,6 +27,7 @@ public:
 private:
     void init_SSBOs();
 
+    DirLight directionalLight;
     std::vector<ClusteredLight> lights;
     unsigned int numLights = 16 * 9 * 4;
     unsigned int maxLights = 1000;

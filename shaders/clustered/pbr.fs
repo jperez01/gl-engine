@@ -14,6 +14,11 @@ struct PointLight {
     float something;
 };
 
+struct DirLight {
+    vec3 direction;
+    vec3 color;
+};
+
 struct LightGrid {
     uint offset;
     uint count;
@@ -50,6 +55,8 @@ uniform vec3 viewPos;
 uniform mat4 view;
 uniform mat4 projection;
 
+uniform DirLight dirLight;
+
 uniform sampler2D texture_diffuse1;
 uniform sampler2D texture_specular1;
 uniform sampler2D texture_normal1;
@@ -62,6 +69,8 @@ vec3 getNormalFromMap();
 vec3 calcPointLight(uint index, vec3 position, vec3 normal, 
     vec3 viewDir, vec3 albedo, float roughness, 
     float metallic, vec3 F0, float viewDistance);
+vec3 calcDirLight(vec3 normal, vec3 viewDir, vec3 albedo, 
+    float roughness, float metallic, vec3 F0);
 float linearDepth(float depthSample);
 
 vec3 fresnelSchlick(float cosTheta, vec3 F0);
@@ -104,7 +113,7 @@ void main()
     uint lightCount = lightGrid[tileIndex].count;
     uint lightIndexOffset = lightGrid[tileIndex].offset;
 
-    vec3 radianceOut = vec3(0.0);
+    vec3 radianceOut = calcDirLight(normal, viewDir, albedo, roughness, metallic, F0);
     for (uint i = 0; i < lightCount; i++) {
         uint lightIndex = globalLightIndexList[lightIndexOffset + i];
         radianceOut += calcPointLight(lightIndex, FragPos, normal, 
@@ -165,6 +174,31 @@ vec3 calcPointLight(uint index, vec3 position, vec3 normal,
 
     vec3 radiance = (kD * albedo / M_PI + specular) * radianceIn * nDotL;
     return multiplier * radiance;
+}
+
+vec3 calcDirLight(vec3 normal, vec3 viewDir, vec3 albedo, float roughness, float metallic, vec3 F0) {
+    vec3 lightDir = normalize(-dirLight.direction);
+    vec3 halfwayDir = normalize(lightDir + viewDir);
+
+    float nDotL = max(dot(normal, lightDir), 0.0);
+    float nDotV = max(dot(normal, viewDir), 0.0);
+
+    vec3 radianceIn = dirLight.color;
+
+    float NDF = DistributionGGX(normal, halfwayDir, roughness);
+    float G = GeometrySmith(normal, viewDir, lightDir, roughness);
+    vec3 F = fresnelSchlick(max(dot(halfwayDir, viewDir), 0.0), F0);
+
+    vec3 kS = F;
+    vec3 kD = vec3(1.0) - kS;
+    kD *= 1.0 - metallic;
+
+    vec3 numerator = NDF * G * F;
+    float denominator = 4.0 * nDotV * nDotL;
+    vec3 specular = numerator / max(denominator, 0.000001);
+
+    vec3 radiance = (kD * albedo / M_PI + specular) * radianceIn * nDotL;
+    return radiance;
 }
 
 float linearDepth(float depthSample) {

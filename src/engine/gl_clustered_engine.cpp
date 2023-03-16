@@ -19,12 +19,15 @@ void ClusteredEngine::init_resources() {
     gBufferPipeline = Shader("../../shaders/deferred/gbuffer.vs", "../../shaders/deferred/gbuffer.fs");
     lightBoxPipeline = Shader("../../shaders/deferred/lightBox.vs", "../../shaders/deferred/lightBox.fs");
 
-    Model newModel("../../resources/objects/sponzaBasic/glTF/sponza.gltf");
+    Model newModel("../../resources/objects/sponzaBasic/glTF/sponza.gltf", GLTF);
     loadModelData(newModel);
     usableObjs.push_back(newModel);
 
     quadBuffer = glutil::createScreenQuad();
     cubeBuffer = glutil::createUnitCube();
+
+    directionalLight.direction = glm::vec3(0.0f, 1.0f, 0.0f);
+    directionalLight.diffuse = glm::vec3(0.5f, 0.5f, 0.5f);
 
     std::random_device rd;
     std::mt19937 mt(rd());
@@ -143,6 +146,10 @@ void ClusteredEngine::run() {
             ImGui::SliderFloat("Scale", &scale, 0.5f, 10.0f);
             ImGui::SliderFloat("Multiplier ", &lightMultiplier, 1.0f, 100.0f);
         }
+        if (ImGui::CollapsingHeader("Directional Light Info")) {
+            ImGui::SliderFloat3("Direction", (float*)&directionalLight.direction, -1.0f, 1.0f);
+            ImGui::SliderFloat3("Color", (float*)&directionalLight.diffuse, 0.0f, 1.0f);
+        }
         ImGui::End();
 
         glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)WINDOW_WIDTH/ (float)WINDOW_HEIGHT, 0.1f, 100.0f);
@@ -195,6 +202,9 @@ void ClusteredEngine::run() {
         renderPipeline.setFloat("scale", scale);
         renderPipeline.setVec3("viewPos", camera.Position);
         renderPipeline.setFloat("multiplier", lightMultiplier);
+        
+        renderPipeline.setVec3("dirLight.direction", directionalLight.direction);
+        renderPipeline.setVec3("dirLight.color", directionalLight.diffuse);
 
         renderPipeline.setMat4("view", view);
         renderPipeline.setMat4("projection", projection);
