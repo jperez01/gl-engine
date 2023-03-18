@@ -12,13 +12,20 @@ public:
     void run();
 
     void createValues();
+    void handleEvents();
 
 private:
+    bool shouldAA = false;
+    float stepMultiplier = 1.0f;
     std::vector<DeferredLight> lights;
 
     unsigned int deferredFBO;
     unsigned int gPosition, gNormal, gAlbedo, gReflectionPosition;
     unsigned int depthMap;
+
+    unsigned int screenFBO;
+    unsigned int colorTexture;
+    glm::vec2 inverseScreenSize;
 
     unsigned int ssrFBO;
     unsigned int gReflectionColor;
@@ -31,5 +38,5 @@ private:
 
     Shader renderPipeline;
     Shader gbufferPipeline;
-    Shader ssrPipeline;
+    Shader fxaaPipeline;
 };

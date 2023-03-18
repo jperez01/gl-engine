@@ -15,9 +15,10 @@ void DeferredEngine::init_resources() {
 
     renderPipeline = Shader("../../shaders/deferred/lighting.vs", "../../shaders/deferred/lighting.fs");
     gbufferPipeline = Shader("../../shaders/deferred/gbuffer.vs", "../../shaders/deferred/gbuffer.fs");
-    ssrPipeline = Shader("../../shaders/deferred/lighting.vs", "../../shaders/ssr/ssrF.glsl");
+    fxaaPipeline = Shader("../../shaders/deferred/lighting.vs", "../../shaders/aliasing/fxaa.fs");
     
-    Model newModel("../../resources/objects/sponza/scene.gltf");
+    inverseScreenSize = glm::vec2(1.0 / WINDOW_WIDTH, 1.0 / WINDOW_HEIGHT);
+    Model newModel("../../resources/objects/sponza/scene.gltf", GLTF);
     loadModelData(newModel);
     usableObjs.push_back(newModel);
 
@@ -83,20 +84,12 @@ void DeferredEngine::init_resources() {
     }
     glBindFramebuffer(deferredFBO, 0);
 
-    glCreateFramebuffers(1, &ssrFBO);
-    glBindFramebuffer(GL_FRAMEBUFFER, ssrFBO);
+    glCreateFramebuffers(1, &screenFBO);
+    colorTexture = glutil::createTexture(WINDOW_WIDTH, WINDOW_HEIGHT, GL_FLOAT, GL_RGBA, GL_RGBA8, nullptr);
+    glNamedFramebufferTexture(screenFBO, GL_COLOR_ATTACHMENT0, colorTexture, 0);
+    glNamedFramebufferDrawBuffer(screenFBO, GL_COLOR_ATTACHMENT0);
 
-    glNamedFramebufferTexture(ssrFBO, GL_COLOR_ATTACHMENT0, gReflectionColor, 0);
-    glNamedFramebufferDrawBuffer(ssrFBO, GL_COLOR_ATTACHMENT0);
-
-    unsigned int ssrDepth = glutil::createTexture(WINDOW_WIDTH, WINDOW_HEIGHT, GL_FLOAT_32_UNSIGNED_INT_24_8_REV, GL_DEPTH_STENCIL, GL_DEPTH32F_STENCIL8);
-    glNamedFramebufferTexture(ssrFBO, GL_DEPTH_STENCIL_ATTACHMENT, ssrDepth, 0);
-
-    // glCreateRenderbuffers(1, &ssrDepth);
-    // glNamedRenderbufferStorage(ssrDepth, GL_DEPTH_COMPONENT, WINDOW_WIDTH, WINDOW_HEIGHT);
-    // glNamedFramebufferRenderbuffer(ssrDepth, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, ssrDepth);
-
-    if (glCheckNamedFramebufferStatus(ssrFBO, GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+    if (glCheckNamedFramebufferStatus(screenFBO, GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
         std::cout << "Framebuffer not complete! " << std::endl;
     }
 }
@@ -155,6 +148,9 @@ void DeferredEngine::run() {
 
             ImGui::SliderFloat("Camera Multiplier", &multiplier, 0.00001f, 0.01f);
             ImGui::SliderFloat("Global Radius ", &globalRadius, 1.0f, 10000.0f);
+            ImGui::SliderFloat("Step Multiplier", &stepMultiplier, 0.5f, 10.0f);
+
+            ImGui::RadioButton("Using FXAA", shouldAA);
 
             if(ImGui::RadioButton("Translate", operation == ImGuizmo::TRANSLATE)) {
                 operation = ImGuizmo::TRANSLATE;
@@ -204,68 +200,55 @@ void DeferredEngine::run() {
             }
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-        /*
-        glBindFramebuffer(GL_FRAMEBUFFER, ssrFBO);
+        if (shouldAA) glBindFramebuffer(GL_FRAMEBUFFER, screenFBO);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-            ssrPipeline.use();
+            renderPipeline.use();
 
-            glBindTextureUnit(0, depthMap);
+            glBindTextureUnit(0, gPosition);
             glBindTextureUnit(1, gNormal);
             glBindTextureUnit(2, gAlbedo);
-            glBindTextureUnit(3, gReflectionPosition);
+            glBindTextureUnit(3, gReflectionColor);
 
-            ssrPipeline.setInt("normalTexture", 1);
-            ssrPipeline.setInt("colorTexture", 2);
-            ssrPipeline.setInt("depthTexture", 0);
-            ssrPipeline.setInt("positionTexture", 3);
+            renderPipeline.setInt("gPosition", 0);
+            renderPipeline.setInt("gNormal", 1);
+            renderPipeline.setInt("gAlbedoSpec", 2);
+            renderPipeline.setInt("gReflectionColor", 3);
 
-            ssrPipeline.setMat4("projection", projection);
-            ssrPipeline.setMat4("view", view);
-            ssrPipeline.setMat4("invProjection", glm::inverse(projection));
-            ssrPipeline.setMat4("invView", glm::inverse(view));
+            renderPipeline.setVec3("directionalLight.direction", direction);
+            renderPipeline.setVec3("directionalLight.color", color);
 
+            for (unsigned int i = 0; i < lights.size(); i++) {
+                std::string name = "lights[" + std::to_string(i) + "].";
+                renderPipeline.setVec3(name + "Position", lights[i].position);
+                renderPipeline.setVec3(name + "Color", lights[i].color);
+
+                const float constant = 1.0f;
+                const float linear = 0.7f;
+                const float quadratic = 1.8f;
+
+                renderPipeline.setFloat(name + "Linear", linear);
+                renderPipeline.setFloat(name + "Quadratic", quadratic);
+
+                const float maxBrightness = std::fmaxf(std::fmaxf(lights[i].color.r, lights[i].color.g), lights[i].color.b);
+                float radius = (-linear + std::sqrt(linear * linear - 4 * quadratic * (constant - (256.0f / 5.0f) * maxBrightness))) / (2.0f * quadratic);
+                renderPipeline.setFloat(name + "Radius", globalRadius);
+            }
+            renderPipeline.setVec3("viewPos", camera.Position);
+            
             glBindVertexArray(quadBuffer.VAO);
             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        */
-        
 
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        renderPipeline.use();
+        if (shouldAA) {
+            fxaaPipeline.use();
+            glBindTextureUnit(0, colorTexture);
 
-        glBindTextureUnit(0, gPosition);
-        glBindTextureUnit(1, gNormal);
-        glBindTextureUnit(2, gAlbedo);
-        glBindTextureUnit(3, gReflectionColor);
-
-        renderPipeline.setInt("gPosition", 0);
-        renderPipeline.setInt("gNormal", 1);
-        renderPipeline.setInt("gAlbedoSpec", 2);
-        renderPipeline.setInt("gReflectionColor", 3);
-
-        renderPipeline.setVec3("directionalLight.direction", direction);
-        renderPipeline.setVec3("directionalLight.color", color);
-
-        for (unsigned int i = 0; i < lights.size(); i++) {
-            std::string name = "lights[" + std::to_string(i) + "].";
-            renderPipeline.setVec3(name + "Position", lights[i].position);
-            renderPipeline.setVec3(name + "Color", lights[i].color);
-
-            const float constant = 1.0f;
-            const float linear = 0.7f;
-            const float quadratic = 1.8f;
-
-            renderPipeline.setFloat(name + "Linear", linear);
-            renderPipeline.setFloat(name + "Quadratic", quadratic);
-
-            const float maxBrightness = std::fmaxf(std::fmaxf(lights[i].color.r, lights[i].color.g), lights[i].color.b);
-            float radius = (-linear + std::sqrt(linear * linear - 4 * quadratic * (constant - (256.0f / 5.0f) * maxBrightness))) / (2.0f * quadratic);
-            renderPipeline.setFloat(name + "Radius", globalRadius);
+            fxaaPipeline.setVec2("inverseScreenSize", inverseScreenSize);
+            fxaaPipeline.setInt("screenTexture", 0);
+            fxaaPipeline.setFloat("multiplier", stepMultiplier);
+            glBindVertexArray(quadBuffer.VAO);
+            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
         }
-        renderPipeline.setVec3("viewPos", camera.Position);
-        
-        glBindVertexArray(quadBuffer.VAO);
-        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
         glBindFramebuffer(GL_READ_FRAMEBUFFER, deferredFBO);
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
@@ -276,5 +259,51 @@ void DeferredEngine::run() {
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
         SDL_GL_SwapWindow(window);
+    }
+}
+
+void DeferredEngine::handleEvents() {
+    SDL_Event event;
+    SDL_Keycode type;
+    ImGuiIO& io = ImGui::GetIO(); (void)io;
+
+    while (SDL_PollEvent(&event)) {
+        ImGui_ImplSDL2_ProcessEvent(&event);
+        if (event.type == SDL_QUIT) {
+            closedWindow = true;
+        } else if (event.type == SDL_KEYUP) {
+            type = event.key.keysym.sym;
+            if (type >= SDLK_RIGHT && type <= SDLK_UP) keyDown[type - SDLK_RIGHT] = false;
+
+            if (type == SDLK_a) shouldAA = !shouldAA;
+        } else if (event.type == SDL_KEYDOWN) {
+            type = event.key.keysym.sym;
+            if (type >= SDLK_RIGHT && type <= SDLK_UP) keyDown[type - SDLK_RIGHT] = true;
+        } else if (event.type == SDL_MOUSEMOTION && (!io.WantCaptureMouse || ImGuizmo::IsOver())) {
+            mouse_callback(event.motion.x, event.motion.y);
+        } else if (event.type == SDL_MOUSEWHEEL) {
+            scroll_callback(event.wheel.y);
+        } else if (event.type == SDL_WINDOWEVENT
+            && event.window.event == SDL_WINDOWEVENT_RESIZED) {
+            framebuffer_callback(event.window.data1, event.window.data2);
+        } else if (event.type == SDL_MOUSEBUTTONDOWN) {
+            handleClick(event.motion.x, event.motion.y);
+        }
+    }
+
+    for (int i = 0; i < 4; i++) {
+        type = keyDown[i] ? SDLK_RIGHT + i : 0;
+
+        if (type == SDLK_UP)
+            camera.processKeyboard(FORWARD, deltaTime);
+        
+        if (type == SDLK_DOWN)
+            camera.processKeyboard(BACKWARD, deltaTime);
+
+        if (type == SDLK_LEFT)
+            camera.processKeyboard(LEFT, deltaTime);
+
+        if (type == SDLK_RIGHT)
+            camera.processKeyboard(RIGHT, deltaTime);
     }
 }
