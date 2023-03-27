@@ -4,6 +4,7 @@ out vec4 FragColor;
 in vec2 TexCoords;
 in vec3 Normal;
 in vec3 FragPos;
+in mat3 TBN;
 
 struct PointLight {
     vec4 position;
@@ -63,6 +64,7 @@ uniform sampler2D texture_normal1;
 uniform sampler2D texture_metallic1;
 
 uniform bool noNormalMap;
+uniform bool useFragNormalFunction;
 uniform bool noMetallicMap;
 
 vec3 getNormalFromMap();
@@ -95,7 +97,14 @@ void main()
 
     vec3 normal;
     if (noNormalMap) normal = normalize(Normal);
-    else normal = getNormalFromMap();
+    else  {
+        if (useFragNormalFunction) {
+            normal = getNormalFromMap();
+        } else {
+            vec3 tangentNormal = texture(texture_normal1, TexCoords).xyz * 2.0 - 1.0;
+            normal = normalize(TBN * tangentNormal);
+        }
+    }
 
     vec3 viewDir = normalize(viewPos - FragPos);
     vec3 reflectDir = reflect(-viewDir, normal);

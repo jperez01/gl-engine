@@ -13,12 +13,20 @@
 void DeferredEngine::init_resources() {
     camera = Camera(glm::vec3(0.0f, 0.0f, 5.0f));
 
-    renderPipeline = Shader("../../shaders/deferred/lighting.vs", "../../shaders/deferred/lighting.fs");
-    gbufferPipeline = Shader("../../shaders/deferred/gbuffer.vs", "../../shaders/deferred/gbuffer.fs");
+    renderPipeline = Shader("../../shaders/deferred/lighting.vs", "../../shaders/ssr/finalPassF.glsl");
+    gbufferPipeline = Shader("../../shaders/aliasing/taa/taaGbuffer.vs", "../../shaders/aliasing/taa/taaGbuffer.fs");
     fxaaPipeline = Shader("../../shaders/deferred/lighting.vs", "../../shaders/aliasing/fxaa.fs");
-    
+    ssrPipeline = Shader("../../shaders/deferred/lighting.vs", "../../shaders/ssr/ssrF.glsl");
+
+    taaResolvePipeline = Shader("../../shaders/deferred/lighting.vs", "../../shaders/aliasing/taa/taaResolve.fs");
+    taaHistoryPipeline = Shader("../../shaders/deferred/lighting.vs", "../../shaders/aliasing/taa/taaHistory.fs");
+
     inverseScreenSize = glm::vec2(1.0 / WINDOW_WIDTH, 1.0 / WINDOW_HEIGHT);
-    Model newModel("../../resources/objects/sponza/scene.gltf", GLTF);
+   for (int i = 0; i < 128; i++) {
+    haltonSequences[i] = glm::vec2(createHaltonSequence(i + 1, 2), createHaltonSequence(i + 1, 3));
+   }
+
+    Model newModel("../../resources/objects/sponzaBasic/glTF/Sponza.gltf", GLTF);
     loadModelData(newModel);
     usableObjs.push_back(newModel);
 
@@ -26,16 +34,6 @@ void DeferredEngine::init_resources() {
 
     planeBuffer = glutil::createPlane();
     planeTexture = glutil::loadTexture("../../resources/textures/wood.png");
-
-    objectPositions.push_back(glm::vec3(-3.0, -0.5, -3.0));
-    objectPositions.push_back(glm::vec3( 0.0, -0.5, -3.0));
-    objectPositions.push_back(glm::vec3( 3.0, -0.5, -3.0));
-    objectPositions.push_back(glm::vec3(-3.0, -0.5,  0.0));
-    objectPositions.push_back(glm::vec3( 0.0, -0.5,  0.0));
-    objectPositions.push_back(glm::vec3( 3.0, -0.5,  0.0));
-    objectPositions.push_back(glm::vec3(-3.0, -0.5,  3.0));
-    objectPositions.push_back(glm::vec3( 0.0, -0.5,  3.0));
-    objectPositions.push_back(glm::vec3( 3.0, -0.5,  3.0));
 
     std::random_device rd;
     std::mt19937 mt(rd());
@@ -59,6 +57,8 @@ void DeferredEngine::init_resources() {
     gAlbedo = glutil::createTexture(WINDOW_WIDTH, WINDOW_HEIGHT, GL_UNSIGNED_BYTE, GL_RGBA, GL_RGBA8, nullptr);
     gReflectionColor = glutil::createTexture(WINDOW_WIDTH, WINDOW_HEIGHT, GL_FLOAT, GL_RGBA, GL_RGBA16F);
     gReflectionPosition = glutil::createTexture(WINDOW_WIDTH, WINDOW_HEIGHT, GL_FLOAT, GL_RGBA, GL_RGBA16F);
+    gMetallic = glutil::createTexture(WINDOW_WIDTH, WINDOW_HEIGHT, GL_FLOAT, GL_RG, GL_RG16F, nullptr);
+    gVelocity = glutil::createTexture(WINDOW_WIDTH, WINDOW_HEIGHT, GL_FLOAT, GL_RG, GL_RG16F, nullptr);
 
     depthMap = glutil::createTexture(WINDOW_WIDTH, WINDOW_HEIGHT, GL_FLOAT_32_UNSIGNED_INT_24_8_REV, GL_DEPTH_STENCIL, GL_DEPTH32F_STENCIL8);
     
@@ -66,30 +66,57 @@ void DeferredEngine::init_resources() {
     glNamedFramebufferTexture(deferredFBO, GL_COLOR_ATTACHMENT1, gNormal, 0);
     glNamedFramebufferTexture(deferredFBO, GL_COLOR_ATTACHMENT2, gAlbedo, 0);
     glNamedFramebufferTexture(deferredFBO, GL_COLOR_ATTACHMENT3, gReflectionPosition, 0);
+    glNamedFramebufferTexture(deferredFBO, GL_COLOR_ATTACHMENT4, gMetallic, 0);
+    glNamedFramebufferTexture(deferredFBO, GL_COLOR_ATTACHMENT5, gVelocity, 0);
 
     glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, depthMap, 0);
 
     glNamedFramebufferTexture(deferredFBO, GL_DEPTH_STENCIL_ATTACHMENT, depthMap, 0);
 
-    unsigned int attachments[4] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3 };
-    glNamedFramebufferDrawBuffers(deferredFBO, 4, attachments);
-
-    unsigned int rboDepth;
-    // glCreateRenderbuffers(1, &rboDepth);
-    // glNamedRenderbufferStorage(rboDepth, GL_DEPTH_COMPONENT, WINDOW_WIDTH, WINDOW_HEIGHT);
-    // glNamedFramebufferRenderbuffer(deferredFBO, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rboDepth);
+    unsigned int attachments[6] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, 
+        GL_COLOR_ATTACHMENT3, GL_COLOR_ATTACHMENT4, GL_COLOR_ATTACHMENT5 };
+    glNamedFramebufferDrawBuffers(deferredFBO, 6, attachments);
     
     if (glCheckNamedFramebufferStatus(deferredFBO, GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
         std::cout << "Framebuffer not complete! " << std::endl;
     }
     glBindFramebuffer(deferredFBO, 0);
 
-    glCreateFramebuffers(1, &screenFBO);
-    colorTexture = glutil::createTexture(WINDOW_WIDTH, WINDOW_HEIGHT, GL_FLOAT, GL_RGBA, GL_RGBA8, nullptr);
-    glNamedFramebufferTexture(screenFBO, GL_COLOR_ATTACHMENT0, colorTexture, 0);
-    glNamedFramebufferDrawBuffer(screenFBO, GL_COLOR_ATTACHMENT0);
+    glCreateFramebuffers(1, &ssrFBO);
+    glNamedFramebufferTexture(ssrFBO, GL_COLOR_ATTACHMENT0, gReflectionColor, 0);
+    glNamedFramebufferDrawBuffer(ssrFBO, GL_COLOR_ATTACHMENT0);
 
-    if (glCheckNamedFramebufferStatus(screenFBO, GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+    unsigned int ssrDepth = glutil::createTexture(WINDOW_WIDTH, WINDOW_HEIGHT, GL_FLOAT_32_UNSIGNED_INT_24_8_REV, GL_DEPTH_STENCIL, GL_DEPTH32F_STENCIL8);
+    glNamedFramebufferTexture(ssrFBO, GL_DEPTH_STENCIL_ATTACHMENT, ssrDepth, 0);
+
+    if (glCheckNamedFramebufferStatus(ssrFBO, GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        std::cout << "Framebuffer not complete! " << std::endl;
+    }
+
+    glCreateFramebuffers(1, &aaFBO);
+    colorTexture = glutil::createTexture(WINDOW_WIDTH, WINDOW_HEIGHT, GL_FLOAT, GL_RGBA, GL_RGBA8, nullptr);
+    glNamedFramebufferTexture(aaFBO, GL_COLOR_ATTACHMENT0, colorTexture, 0);
+    glNamedFramebufferDrawBuffer(aaFBO, GL_COLOR_ATTACHMENT0);
+
+    if (glCheckNamedFramebufferStatus(aaFBO, GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        std::cout << "Framebuffer not complete! " << std::endl;
+    }
+
+    glCreateFramebuffers(1, &simpleColorFBO);
+    simpleColorTexture = glutil::createTexture(WINDOW_WIDTH, WINDOW_HEIGHT, GL_FLOAT, GL_RGBA, GL_RGBA8, nullptr);
+    glNamedFramebufferTexture(simpleColorFBO, GL_COLOR_ATTACHMENT0, simpleColorTexture, 0);
+    glNamedFramebufferDrawBuffer(simpleColorFBO, GL_COLOR_ATTACHMENT0);
+
+    if (glCheckNamedFramebufferStatus(simpleColorFBO, GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        std::cout << "Framebuffer not complete! " << std::endl;
+    }
+
+    glCreateFramebuffers(1, &historyFBO);
+    historyColorTexture = glutil::createTexture(WINDOW_WIDTH, WINDOW_HEIGHT, GL_FLOAT, GL_RGBA, GL_RGBA8, nullptr);
+    glNamedFramebufferTexture(historyFBO, GL_COLOR_ATTACHMENT0, historyColorTexture, 0);
+    glNamedFramebufferDrawBuffer(historyFBO, GL_COLOR_ATTACHMENT0);
+
+    if (glCheckNamedFramebufferStatus(historyFBO, GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
         std::cout << "Framebuffer not complete! " << std::endl;
     }
 }
@@ -150,7 +177,7 @@ void DeferredEngine::run() {
             ImGui::SliderFloat("Global Radius ", &globalRadius, 1.0f, 10000.0f);
             ImGui::SliderFloat("Step Multiplier", &stepMultiplier, 0.5f, 10.0f);
 
-            ImGui::RadioButton("Using FXAA", shouldAA);
+            ImGui::Checkbox("Use FXAA", &shouldFXAA);
 
             if(ImGui::RadioButton("Translate", operation == ImGuizmo::TRANSLATE)) {
                 operation = ImGuizmo::TRANSLATE;
@@ -163,6 +190,9 @@ void DeferredEngine::run() {
             }
         }
         ImGui::End();
+        jitterIndex = jitterIndex % 128;
+        jitter = haltonSequences[jitterIndex] * inverseScreenSize;
+        jitterIndex++;
 
         glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)WINDOW_WIDTH/ (float)WINDOW_HEIGHT, 0.1f, 100.0f);
         glm::mat4 view = camera.getViewMatrix();
@@ -181,6 +211,13 @@ void DeferredEngine::run() {
             gbufferPipeline.setMat4("projection", projection);
             gbufferPipeline.setMat4("view", view);
 
+            gbufferPipeline.setMat4("prevProjection", prevProjection);
+            gbufferPipeline.setMat4("prevView", prevView);
+            if (shouldFXAA)
+                gbufferPipeline.setVec2("jitter", glm::vec2(0.0f));
+            else 
+                gbufferPipeline.setVec2("jitter", jitter);
+
             glBindTextureUnit(0, planeTexture);
             gbufferPipeline.setInt("texture_diffuse1", 0);
 
@@ -189,18 +226,41 @@ void DeferredEngine::run() {
             glBindVertexArray(planeBuffer.VAO);
             glDrawArrays(GL_TRIANGLES, 0, 6);
 
-            for (unsigned int i = 0; i < 1; i++) {
-                model = glm::mat4(1.0f);
-                model = glm::translate(model, objectPositions[i]);
-                model = glm::scale(model, glm::vec3(0.1f));
-                usableObjs[0].model_matrix = model;
+            model = glm::mat4(1.0f);
+            model = glm::scale(model, glm::vec3(0.1f));
+            usableObjs[0].model_matrix = model;
 
-                gbufferPipeline.setMat4("model", model);
-                drawModels(gbufferPipeline);
-            }
+            gbufferPipeline.setMat4("model", model);
+            drawModels(gbufferPipeline);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-        if (shouldAA) glBindFramebuffer(GL_FRAMEBUFFER, screenFBO);
+        glBindFramebuffer(GL_FRAMEBUFFER, ssrFBO);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            ssrPipeline.use();
+            glBindTextureUnit(0, depthMap);
+            glBindTextureUnit(1, gNormal);
+            glBindTextureUnit(2, gAlbedo);
+            glBindTextureUnit(3, gReflectionPosition);
+            glBindTextureUnit(4, gMetallic);
+
+            ssrPipeline.setInt("normalTexture", 1);
+            ssrPipeline.setInt("colorTexture", 2);
+            ssrPipeline.setInt("depthTexture", 0);
+            ssrPipeline.setInt("positionTexture", 3);
+            ssrPipeline.setInt("metallicRoughnessTexture", 4);
+
+            ssrPipeline.setMat4("projection", projection);
+            ssrPipeline.setMat4("view", view);
+            ssrPipeline.setMat4("invProjection", glm::inverse(projection));
+            ssrPipeline.setMat4("invView", glm::inverse(view));
+            glBindVertexArray(quadBuffer.VAO);
+            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        if (shouldFXAA) 
+            glBindFramebuffer(GL_FRAMEBUFFER, aaFBO);
+        else 
+            glBindFramebuffer(GL_FRAMEBUFFER, simpleColorFBO);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
             renderPipeline.use();
 
@@ -239,7 +299,7 @@ void DeferredEngine::run() {
             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-        if (shouldAA) {
+        if (shouldFXAA) {
             fxaaPipeline.use();
             glBindTextureUnit(0, colorTexture);
 
@@ -248,12 +308,17 @@ void DeferredEngine::run() {
             fxaaPipeline.setFloat("multiplier", stepMultiplier);
             glBindVertexArray(quadBuffer.VAO);
             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        } else {
+            renderTAA();
         }
 
         glBindFramebuffer(GL_READ_FRAMEBUFFER, deferredFBO);
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
         glBlitFramebuffer(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, GL_DEPTH_BUFFER_BIT, GL_NEAREST);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        prevProjection = projection;
+        prevView = view;
 
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -262,48 +327,53 @@ void DeferredEngine::run() {
     }
 }
 
-void DeferredEngine::handleEvents() {
-    SDL_Event event;
-    SDL_Keycode type;
-    ImGuiIO& io = ImGui::GetIO(); (void)io;
+float DeferredEngine::createHaltonSequence(unsigned int index, int base) {
+    float f = 1;
+    float r = 0;
+    int current = index;
+    do
+    {
+        f = f / base;
+        r = r + f * (current % base);
+        current = glm::floor(current / base);
+    } while (current > 0);
+    return r;
+}
 
-    while (SDL_PollEvent(&event)) {
-        ImGui_ImplSDL2_ProcessEvent(&event);
-        if (event.type == SDL_QUIT) {
-            closedWindow = true;
-        } else if (event.type == SDL_KEYUP) {
-            type = event.key.keysym.sym;
-            if (type >= SDLK_RIGHT && type <= SDLK_UP) keyDown[type - SDLK_RIGHT] = false;
+void DeferredEngine::renderFXAA() {
 
-            if (type == SDLK_a) shouldAA = !shouldAA;
-        } else if (event.type == SDL_KEYDOWN) {
-            type = event.key.keysym.sym;
-            if (type >= SDLK_RIGHT && type <= SDLK_UP) keyDown[type - SDLK_RIGHT] = true;
-        } else if (event.type == SDL_MOUSEMOTION && (!io.WantCaptureMouse || ImGuizmo::IsOver())) {
-            mouse_callback(event.motion.x, event.motion.y);
-        } else if (event.type == SDL_MOUSEWHEEL) {
-            scroll_callback(event.wheel.y);
-        } else if (event.type == SDL_WINDOWEVENT
-            && event.window.event == SDL_WINDOWEVENT_RESIZED) {
-            framebuffer_callback(event.window.data1, event.window.data2);
-        } else if (event.type == SDL_MOUSEBUTTONDOWN) {
-            handleClick(event.motion.x, event.motion.y);
-        }
-    }
+}
 
-    for (int i = 0; i < 4; i++) {
-        type = keyDown[i] ? SDLK_RIGHT + i : 0;
+void DeferredEngine::renderTAA() {
+    glBindFramebuffer(GL_FRAMEBUFFER, aaFBO);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        taaResolvePipeline.use();
+        glBindTextureUnit(0, simpleColorTexture);
+        glBindTextureUnit(1, historyColorTexture);
+        glBindTextureUnit(2, gVelocity);
 
-        if (type == SDLK_UP)
-            camera.processKeyboard(FORWARD, deltaTime);
-        
-        if (type == SDLK_DOWN)
-            camera.processKeyboard(BACKWARD, deltaTime);
+        taaResolvePipeline.setInt("currentColorBuffer", 0);
+        taaResolvePipeline.setInt("historyBuffer", 1);
+        taaResolvePipeline.setInt("velocityBuffer", 2);
+        glBindVertexArray(quadBuffer.VAO);
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-        if (type == SDLK_LEFT)
-            camera.processKeyboard(LEFT, deltaTime);
+    glBindFramebuffer(GL_FRAMEBUFFER, historyFBO);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        taaHistoryPipeline.use();
+        glBindTextureUnit(0, colorTexture);
 
-        if (type == SDLK_RIGHT)
-            camera.processKeyboard(RIGHT, deltaTime);
-    }
+        taaHistoryPipeline.setInt("colorTexture", 0);
+        glBindVertexArray(quadBuffer.VAO);
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    taaHistoryPipeline.use();
+    glBindTextureUnit(0, colorTexture);
+
+    taaHistoryPipeline.setInt("colorTexture", 0);
+    glBindVertexArray(quadBuffer.VAO);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 }

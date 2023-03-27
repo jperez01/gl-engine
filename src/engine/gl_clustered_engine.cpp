@@ -19,7 +19,7 @@ void ClusteredEngine::init_resources() {
     gBufferPipeline = Shader("../../shaders/deferred/gbuffer.vs", "../../shaders/deferred/gbuffer.fs");
     lightBoxPipeline = Shader("../../shaders/deferred/lightBox.vs", "../../shaders/deferred/lightBox.fs");
 
-    Model newModel("../../resources/objects/sponzaBasic/glTF/sponza.gltf", GLTF);
+    Model newModel("../../resources/objects/sponzaBasic/glTF/Sponza.gltf", GLTF);
     loadModelData(newModel);
     usableObjs.push_back(newModel);
 
@@ -116,6 +116,7 @@ void ClusteredEngine::run() {
     int shininess = 10;
     float lightMultiplier = 10.0f;
     float multiplier = 0.01f;
+    bool shouldUseFragFunction = false;
     ImGuizmo::OPERATION operation = ImGuizmo::OPERATION::TRANSLATE;
 
     while(!closedWindow) {
@@ -145,6 +146,7 @@ void ClusteredEngine::run() {
             ImGui::SliderFloat("Bias", &bias, 0.01f, 1.0f);
             ImGui::SliderFloat("Scale", &scale, 0.5f, 10.0f);
             ImGui::SliderFloat("Multiplier ", &lightMultiplier, 1.0f, 100.0f);
+            ImGui::Checkbox("Should use Frag Function", &shouldUseFragFunction);
         }
         if (ImGui::CollapsingHeader("Directional Light Info")) {
             ImGui::SliderFloat3("Direction", (float*)&directionalLight.direction, -1.0f, 1.0f);
@@ -169,32 +171,8 @@ void ClusteredEngine::run() {
         glm::mat4 model = glm::mat4(1.0f);
         model = glm::scale(model, glm::vec3(0.1f));
 
-        /*
-        glBindFramebuffer(GL_FRAMEBUFFER, deferredFBO);
-            glClearColor(0.0, 0.0, 0.0, 1.0);
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-            gBufferPipeline.use();
-            gBufferPipeline.setMat4("projection", projection);
-            gBufferPipeline.setMat4("view", view);
-            usableObjs[0].model_matrix = model;
-
-            drawModels(gBufferPipeline);
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        */ 
-
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         renderPipeline.use();
-
-        /*
-        glBindTextureUnit(0, gPosition);
-        glBindTextureUnit(1, gNormal);
-        glBindTextureUnit(2, gAlbedo);
-
-        renderPipeline.setInt("gPosition", 0);
-        renderPipeline.setInt("gNormal", 1);
-        renderPipeline.setInt("gAlbedoSpec", 2);
-        */
 
         renderPipeline.setFloat("zNear", camera.zNear);
         renderPipeline.setFloat("zFar", camera.zFar);
@@ -208,6 +186,7 @@ void ClusteredEngine::run() {
 
         renderPipeline.setMat4("view", view);
         renderPipeline.setMat4("projection", projection);
+        renderPipeline.setBool("useFragNormalFunction", shouldUseFragFunction);
         usableObjs[0].model_matrix = model;
 
         drawModels(renderPipeline);

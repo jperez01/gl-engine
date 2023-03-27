@@ -20,6 +20,15 @@ const int NR_LIGHTS = 32;
 uniform Light lights[NR_LIGHTS];
 uniform vec3 viewPos;
 
+vec3 findReflectionColor(sampler2D reflectionColor, vec2 texCoords) {
+    vec3 lumaDown = textureOffset(reflectionColor,texCoords,ivec2(0,-1)).rgb;
+    vec3 lumaUp = textureOffset(reflectionColor,texCoords,ivec2(0,1)).rgb;
+    vec3 lumaLeft = textureOffset(reflectionColor,texCoords,ivec2(-1,0)).rgb;
+    vec3 lumaRight = textureOffset(reflectionColor,texCoords,ivec2(1,0)).rgb;
+
+    return (lumaDown + lumaUp + lumaLeft + lumaRight) / 4.0;
+}
+
 void main()
 {             
     // retrieve data from gbuffer
@@ -31,7 +40,7 @@ void main()
     vec2 texSize = textureSize(gReflectionColor, 0).xy;
     vec2 texCoord = gl_FragCoord.xy / texSize;
 
-    vec4 refColor = texture(gReflectionColor, TexCoords);
+    vec3 refColor = findReflectionColor(gReflectionColor, TexCoords);
     
     // then calculate lighting as usual
     vec3 lighting  = Diffuse * 0.5; // hard-coded ambient component
@@ -56,5 +65,5 @@ void main()
         }      
     }
 
-    FragColor = vec4(lighting + refColor.xyz * 0.2, 1.0);
+    FragColor = vec4(lighting + refColor.xyz, 1.0);
 }

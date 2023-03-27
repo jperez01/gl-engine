@@ -8,6 +8,7 @@ uniform sampler2D depthTexture;
 uniform sampler2D positionTexture;
 uniform sampler2D normalTexture;
 uniform sampler2D colorTexture;
+uniform sampler2D metallicRoughnessTexture;
 
 uniform mat4 projection;
 uniform mat4 invProjection;
@@ -31,6 +32,7 @@ const float reflectionSpecularFalloffExponent = 3.0;
 vec4 rayCast(in vec3 dir, inout vec3 hitCoord, out float dDepth);
 vec3 binarySearch(inout vec3 dir, inout vec3 hitCoord, inout float dDepth);
 vec3 hash(vec3 a);
+vec3 fresnelSchlick(float cosTheta, vec3 F0);
 
 vec3 positionFromDepth(float depth) {
 	float z = depth * 2.0 - 1.0;
@@ -47,6 +49,9 @@ bool isSignificant(float dd) {
 }
 
 void main() {
+	float metallic = texture(metallicRoughnessTexture, TexCoords).g;
+	if (metallic < 0.001) discard;
+
 	float currentDepth = texture(depthTexture, TexCoords).x;
 	vec3 depthPos = positionFromDepth(currentDepth);
 
@@ -59,6 +64,10 @@ void main() {
 	vec3 viewPos = texture(positionTexture, TexCoords).xyz;
 	vec3 albedo = texture(colorTexture, TexCoords).xyz;
 	float spec = texture(colorTexture, TexCoords).w;
+
+	vec3 F0 = vec3(0.04);
+	F0 = mix(F0, albedo, metallic);
+	vec3 Fresnel = fresnelSchlick(max(dot(viewNormal, normalize(viewPos)), 0.0), F0);
 
 	vec3 reflected = normalize(reflect(normalize(viewPos), normalize(viewNormal)));
 	vec3 hitPos = viewPos;
@@ -73,11 +82,12 @@ void main() {
 
 	float screenEdgeFactor = clamp(1.0 - (dCoords.x + dCoords.y), 0.0, 1.0);
 
-	float multiplier = screenEdgeFactor * -reflected.z;
+	float multiplier = pow(metallic, reflectionSpecularFalloffExponent) *
+		screenEdgeFactor * -reflected.z;
 
-	vec3 SSR = texture(colorTexture, coords.xy).rgb * clamp(multiplier, 0.0, 0.9);
+	vec3 SSR = texture(colorTexture, coords.xy).rgb * clamp(multiplier, 0.0, 0.9) * Fresnel;
 
-	FragColor = vec4(SSR, 1.0);
+	FragColor = vec4(SSR, metallic);
 }
 
 vec4 rayCast(in vec3 dir, inout vec3 hitCoord, out float dDepth) {
@@ -133,6 +143,11 @@ vec3 binarySearch(inout vec3 dir, inout vec3 hitCoord, inout float dDepth) {
 	projectedCoord.xy = projectedCoord.xy * 0.5 + 0.5;
 
 	return vec3(projectedCoord.xy, dDepth);
+}
+
+vec3 fresnelSchlick(float cosTheta, vec3 F0)
+{
+    return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
 }
 
 vec3 hash(vec3 a)

@@ -34,13 +34,24 @@ void PBREngine::init_resources() {
         glm::vec3( 10.0f,  10.0f, 10.0f),
         glm::vec3(-10.0f, -10.0f, 10.0f),
         glm::vec3( 10.0f, -10.0f, 10.0f),
+        glm::vec3(-0.0f,  0.0f, 0.0f),
+        glm::vec3( 0.0f,  0.0f, 0.0f),
+        glm::vec3(-0.0f, -0.0f, 0.0f),
+        glm::vec3( 0.0f, -0.0f, 0.0f),
     };
     lightColors = {
         glm::vec3(0.0f, 0.0f, 1.0f),
         glm::vec3(1.0f, 0.0f, 0.0f),
         glm::vec3(0.0f, 1.0f, 0.0f),
-        glm::vec3(0.0f, 0.0f, 1.0f)
+        glm::vec3(0.0f, 0.0f, 1.0f),
+        glm::vec3(1.0f, 1.0f, 1.0f),
+        glm::vec3(1.0f, 1.0f, 1.0f),
+        glm::vec3(1.0f, 1.0f, 1.0f),
+        glm::vec3(1.0f, 1.0f, 1.0f)
     };
+
+    directionLight.diffuse = glm::vec3(1.0f, 1.0f, 1.0f);
+    directionLight.direction = glm::vec3(0.5f, 0.5f, 0.0f);
 
     hdrTexture = glutil::loadFloatTexture("../../resources/textures/apartment/apartment.hdr", GL_RGB, GL_RGB16F);
     brdfLUTTexture = glutil::createTexture(512, 512, GL_FLOAT, GL_RG, GL_RG16F);
@@ -242,8 +253,8 @@ void PBREngine::createPrefilter() {
 }
 
 void PBREngine::run() {
-    bool closedWindow = false;
     SDL_Event event;
+    bool switchValues = false;
 
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
@@ -255,39 +266,10 @@ void PBREngine::run() {
         ImGuiIO& io = ImGui::GetIO(); (void)io;
         float currentFrame = static_cast<float>(SDL_GetTicks());
         deltaTime = currentFrame - lastFrame;
-        deltaTime *= 0.1;
+        deltaTime *= 0.01;
         lastFrame = currentFrame;
 
-        while (SDL_PollEvent(&event)) {
-            if (event.type == SDL_QUIT) {
-                closedWindow = true;
-            } else if (event.type == SDL_KEYDOWN) {
-                SDL_Keycode type = event.key.keysym.sym;
-
-                if (type == SDLK_UP)
-                    camera.processKeyboard(FORWARD, deltaTime);
-                
-                if (type == SDLK_DOWN)
-                    camera.processKeyboard(BACKWARD, deltaTime);
-
-                if (type == SDLK_LEFT)
-                    camera.processKeyboard(LEFT, deltaTime);
-
-                if (type == SDLK_RIGHT)
-                    camera.processKeyboard(RIGHT, deltaTime);
-
-                if (type == SDLK_SPACE) showModel = !showModel;
-            } else if (event.type == SDL_MOUSEMOTION && (!io.WantCaptureMouse || ImGuizmo::IsOver())) {
-                mouse_callback(event.motion.x, event.motion.y);
-            } else if (event.type == SDL_MOUSEWHEEL) {
-                scroll_callback(event.wheel.y);
-            } else if (event.type == SDL_WINDOWEVENT
-                && event.window.event == SDL_WINDOWEVENT_RESIZED) {
-                framebuffer_callback(event.window.data1, event.window.data2);
-            } else if (event.type == SDL_MOUSEBUTTONDOWN) {
-                handleClick(event.motion.x, event.motion.y);
-            }
-        }
+        handleEvents();
 
         glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -296,9 +278,28 @@ void PBREngine::run() {
 
         pipeline.setVec3("albedo", glm::vec3(0.5f, 0.0f, 0.0f));
         pipeline.setFloat("ao", 1.0f);
+
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplSDL2_NewFrame();
+        ImGui::NewFrame();
+        ImGuizmo::BeginFrame();
+
+        ImGui::Begin("Info");
+        if (ImGui::CollapsingHeader("Scene Info")) {
+            ImGui::SliderFloat3("Light Direction", (float*)&directionLight.direction, -1.0f, 1.0f);
+            ImGui::SliderFloat3("Dir Light Color", (float*)&directionLight.diffuse, 0.0f, 1.0f);
+            if(ImGui::RadioButton("Switch Roughness and Metallic", switchValues)) {
+                switchValues = !switchValues;
+            }
+        }
+        ImGui::End();
         
         glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)WINDOW_WIDTH / (float)WINDOW_HEIGHT, 0.1f, 100.0f);
         glm::mat4 view = camera.getViewMatrix();
+
+        pipeline.setVec3("dirLight.direction", glm::normalize(directionLight.direction));
+        pipeline.setVec3("dirLight.color", directionLight.diffuse);
+        pipeline.setBool("switchValues", switchValues);
 
         pipeline.setMat4("projection", projection);
         pipeline.setMat4("view", view);
@@ -388,11 +389,61 @@ void PBREngine::run() {
         glBindVertexArray(cubemapBuffer.VAO);
         glDrawArrays(GL_TRIANGLES, 0, 36);
 
+        ImGui::Render();
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
         SDL_GL_SwapWindow(window);
     }
 }
 
+void PBREngine::handleEvents() {
+    SDL_Event event;
+    SDL_Keycode type;
+    ImGuiIO& io = ImGui::GetIO(); (void)io;
+
+    while (SDL_PollEvent(&event)) {
+        ImGui_ImplSDL2_ProcessEvent(&event);
+        if (event.type == SDL_QUIT) {
+            closedWindow = true;
+        } else if (event.type == SDL_KEYUP) {
+            type = event.key.keysym.sym;
+            if (type >= SDLK_RIGHT && type <= SDLK_UP) keyDown[type - SDLK_RIGHT] = false;
+
+            if (type == SDLK_SPACE) showModel = !showModel;
+        } else if (event.type == SDL_KEYDOWN) {
+            type = event.key.keysym.sym;
+            if (type >= SDLK_RIGHT && type <= SDLK_UP) keyDown[type - SDLK_RIGHT] = true;
+        } else if (event.type == SDL_MOUSEMOTION && (!io.WantCaptureMouse || ImGuizmo::IsOver())) {
+            mouse_callback(event.motion.x, event.motion.y);
+        } else if (event.type == SDL_MOUSEWHEEL) {
+            scroll_callback(event.wheel.y);
+        } else if (event.type == SDL_WINDOWEVENT
+            && event.window.event == SDL_WINDOWEVENT_RESIZED) {
+            framebuffer_callback(event.window.data1, event.window.data2);
+        } else if (event.type == SDL_MOUSEBUTTONDOWN) {
+            handleClick(event.motion.x, event.motion.y);
+        }
+    }
+
+    for (int i = 0; i < 4; i++) {
+        type = keyDown[i] ? SDLK_RIGHT + i : 0;
+
+        if (type == SDLK_UP)
+            camera.processKeyboard(FORWARD, deltaTime);
+        
+        if (type == SDLK_DOWN)
+            camera.processKeyboard(BACKWARD, deltaTime);
+
+        if (type == SDLK_LEFT)
+            camera.processKeyboard(LEFT, deltaTime);
+
+        if (type == SDLK_RIGHT)
+            camera.processKeyboard(RIGHT, deltaTime);
+    }
+}
+
 void PBREngine::drawModels(Shader& shader, bool skipTextures) {
+    shader.setBool("isModel", true);
     for (Model& model : usableObjs) {
         shader.setMat4("model", model.model_matrix);
 
@@ -444,4 +495,5 @@ void PBREngine::drawModels(Shader& shader, bool skipTextures) {
             glBindVertexArray(0);
         }
     }
+    shader.setBool("isModel", false);
 }

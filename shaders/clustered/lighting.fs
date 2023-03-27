@@ -109,8 +109,5 @@ void main()
         lighting += calcPointLight(lightIndex, FragPos, normal, viewDir, Diffuse, Specular);
     }
 
-    //FragColor = vec4(colors[uint(mod(zTile, 8))], 1.0);
-    // FragColor = vec4(vec3(tileIndex) / vec3(6144) , 1.0);
-
     FragColor = vec4(lighting, 1.0);
 }

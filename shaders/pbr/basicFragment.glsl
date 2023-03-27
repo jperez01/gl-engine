@@ -7,6 +7,8 @@ in vec3 WorldPos;
 in vec2 TexCoords;
 
 uniform vec3 viewPos;
+uniform bool isModel = false;
+uniform bool switchValues = false;
 
 uniform sampler2D texture_diffuse;
 uniform sampler2D texture_normal;
@@ -23,10 +25,17 @@ struct Light {
     vec3 color;
 };
 
-#define MAX_NUM_LIGHTS 4
+struct DirLight {
+    vec3 direction;
+    vec3 color;
+};
+
+#define MAX_NUM_LIGHTS 8
 const float PI = 3.14159265359;
 
 uniform Light lights[MAX_NUM_LIGHTS];
+
+uniform DirLight dirLight;
 
 vec3 getNormalFromMap()
 {
@@ -87,10 +96,16 @@ float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
     return ggx1 * ggx2;
 }
 
+vec3 calcDirLight(vec3 normal, vec3 viewDir, vec3 albedo, 
+    float roughness, float metallic, vec3 F0);
+
 void main() {
     vec3 albedo = pow(texture(texture_diffuse, TexCoords).rgb, vec3(2.2));
-    float metallic = texture(texture_metallic, TexCoords).g;
-    float roughness = texture(texture_roughness, TexCoords).b;
+    vec2 metalRough = texture(texture_metallic, TexCoords).bg;
+    float metallic = metalRough.r;
+    float roughness = isModel 
+    ? metalRough.g
+    : texture(texture_roughness, TexCoords).b;
     float ao = texture(texture_ao, TexCoords).r;
 
     vec3 N = getNormalFromMap();
@@ -100,7 +115,7 @@ void main() {
     vec3 F0 = vec3(0.04);
     F0 = mix(F0, albedo, metallic);
 
-    vec3 Lo = vec3(0.0f);
+    vec3 Lo = calcDirLight(N, V, albedo, roughness, metallic, F0);
     for (int i = 0; i < MAX_NUM_LIGHTS; i++) {
         vec3 L = normalize(lights[i].position - WorldPos);
         vec3 H = normalize(V + L);
@@ -146,4 +161,29 @@ void main() {
     color = pow(color, vec3(1.0 / 2.2));
 
     FragColor = vec4(color, 1.0);
+}
+
+vec3 calcDirLight(vec3 normal, vec3 viewDir, vec3 albedo, float roughness, float metallic, vec3 F0) {
+    vec3 lightDir = normalize(-dirLight.direction);
+    vec3 halfwayDir = normalize(lightDir + viewDir);
+
+    float nDotL = max(dot(normal, lightDir), 0.0);
+    float nDotV = max(dot(normal, viewDir), 0.0);
+
+    vec3 radianceIn = dirLight.color;
+
+    float NDF = DistributionGGX(normal, halfwayDir, roughness);
+    float G = GeometrySmith(normal, viewDir, lightDir, roughness);
+    vec3 F = fresnelSchlick(max(dot(halfwayDir, viewDir), 0.0), F0);
+
+    vec3 kS = F;
+    vec3 kD = vec3(1.0) - kS;
+    kD *= 1.0 - metallic;
+
+    vec3 numerator = NDF * G * F;
+    float denominator = 4.0 * nDotV * nDotL;
+    vec3 specular = numerator / max(denominator, 0.000001);
+
+    vec3 radiance = (kD * albedo / PI + specular) * radianceIn * nDotL;
+    return radiance;
 }

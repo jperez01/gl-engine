@@ -8,6 +8,7 @@ class PBREngine : public GLEngine {
 public:
     void init_resources();
     void run();
+    void handleEvents();
 
     void createSphere();
     void createIrradianceMap();
@@ -34,6 +35,7 @@ private:
 
     std::vector<glm::vec3> lightPositions;
     std::vector<glm::vec3> lightColors;
+    DirLight directionLight;
 
     Shader pipeline;
     Shader backgroundPipeline;
