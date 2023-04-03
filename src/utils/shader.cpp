@@ -4,6 +4,13 @@ Shader::Shader() {}
 
 Shader::Shader(const char* vertexPath, const char* fragmentPath, 
     const char* geoPath) {
+    const string shaderPath = "../../shaders/";
+
+    string convertedVertexPath = shaderPath + vertexPath;
+    string convertedFragmentPath = shaderPath + fragmentPath;
+    string convertedGeometryPath;
+    if (geoPath != nullptr) convertedGeometryPath = shaderPath + geoPath;
+
     string vertexCode;
     string fragmentCode;
     string geoCode;
@@ -16,8 +23,8 @@ Shader::Shader(const char* vertexPath, const char* fragmentPath,
     gShaderFile.exceptions(ifstream::failbit | ifstream::badbit);
 
     try {
-        vShaderFile.open(vertexPath);
-        fShaderFile.open(fragmentPath);
+        vShaderFile.open(convertedVertexPath.c_str());
+        fShaderFile.open(convertedFragmentPath.c_str());
         stringstream vShaderStream, fShaderStream;
 
         vShaderStream << vShaderFile.rdbuf();
@@ -30,14 +37,14 @@ Shader::Shader(const char* vertexPath, const char* fragmentPath,
         fragmentCode = fShaderStream.str();
 
         if (geoPath != nullptr) {
-            gShaderFile.open(geoPath);
+            gShaderFile.open(convertedGeometryPath.c_str());
             stringstream gShaderStream;
             gShaderStream << gShaderFile.rdbuf();
             gShaderFile.close();
             geoCode = gShaderStream.str();
         }
     } catch (ifstream::failure& e) {
-        std::cout << "ERROR::SHADER::FILE_NOT_SUCCESFULLY_READ" << std::endl;
+        std::cout << "ERROR::SHADER::FILE_NOT_SUCCESFULLY_READ " << e.what() << std::endl;
     }
 
     const char* vShaderCode = vertexCode.c_str();

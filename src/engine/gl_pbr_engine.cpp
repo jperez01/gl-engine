@@ -10,14 +10,14 @@
 void PBREngine::init_resources() {
     camera = Camera(glm::vec3(0.0f, 0.0f, 10.0f));
 
-    pipeline = Shader("../../shaders/pbr/basicVertex.glsl", "../../shaders/pbr/basicFragment.glsl");
-    convertToCubemapPipeline = Shader("../../shaders/pbr/cubemapVertex.glsl", "../../shaders/pbr/cubemapFragment.glsl");
-    createIrradiancePipeline = Shader("../../shaders/pbr/cubemapVertex.glsl", "../../shaders/pbr/irradianceFragment.glsl");
-    backgroundPipeline = Shader("../../shaders/pbr/backgroundV.glsl", "../../shaders/pbr/backgroundF.glsl");
-    prefilterPipeline = Shader("../../shaders/pbr/cubemapVertex.glsl", "../../shaders/pbr/prefilterF.glsl");
-    brdfPipeline = Shader("../../shaders/pbr/brdfV.glsl", "../../shaders/pbr/brdfF.glsl");
+    pipeline = Shader("pbr/basicVertex.glsl", "pbr/basicFragment.glsl");
+    convertToCubemapPipeline = Shader("pbr/cubemapVertex.glsl", "pbr/cubemapFragment.glsl");
+    createIrradiancePipeline = Shader("pbr/cubemapVertex.glsl", "pbr/irradianceFragment.glsl");
+    backgroundPipeline = Shader("pbr/backgroundV.glsl", "pbr/backgroundF.glsl");
+    prefilterPipeline = Shader("pbr/cubemapVertex.glsl", "pbr/prefilterF.glsl");
+    brdfPipeline = Shader("pbr/brdfV.glsl", "pbr/brdfF.glsl");
 
-    Model newModel("../../resources/objects/DamagedHelmet/DamagedHelmet.gltf", GLTF);
+    Model newModel("../../resources/objects/sponzaBasic/glTF/Sponza.gltf", GLTF);
     loadModelData(newModel);
     usableObjs.push_back(newModel);
 
@@ -444,8 +444,10 @@ void PBREngine::handleEvents() {
 
 void PBREngine::drawModels(Shader& shader, bool skipTextures) {
     shader.setBool("isModel", true);
+    glm::mat4 otherModel = glm::mat4(1.0f);
+    otherModel = glm::scale(otherModel, glm::vec3(0.10f));
     for (Model& model : usableObjs) {
-        shader.setMat4("model", model.model_matrix);
+        shader.setMat4("model", otherModel);
 
         for (int j = 0; j < model.meshes.size(); j++) {
             Mesh& mesh = model.meshes[j];

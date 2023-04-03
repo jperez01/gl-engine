@@ -11,6 +11,7 @@ add_library(gl_tools
     engine/gl_pbr_engine.cpp
     engine/gl_clustered_engine.h
     engine/gl_clustered_engine.cpp
+    engine/gl_voxel_eng.cpp
 
     utils/gl_funcs.h
     utils/gl_funcs.cpp
@@ -40,6 +41,9 @@ add_executable(pbr_engine
 add_executable(clustered_engine
     exes/clusteredDemo.cpp)
 
+add_executable(voxel_cone_tracing
+    exes/voxelDemo.cpp)
+
 target_include_directories(gl_tools PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${PROJECT_SOURCE_DIR}/include)
@@ -57,3 +61,4 @@ target_link_libraries(compute_engine gl_tools)
 target_link_libraries(deferred_engine gl_tools)
 target_link_libraries(pbr_engine gl_tools)
 target_link_libraries(clustered_engine gl_tools)
+target_link_libraries(voxel_cone_tracing gl_tools)

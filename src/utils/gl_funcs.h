@@ -40,6 +40,7 @@ namespace glutil {
     unsigned int loadTexture(std::string path, GLenum dataType, GLenum format, GLenum storageFormat);
     unsigned int loadTexture(std::string path);
 
+    unsigned int createTexture3D(int width, int height, int depth, GLenum storageFormat = GL_RGBA8);
     unsigned int createTextureArray(int size, int width, int height, GLenum dataType, GLenum format = GL_RGBA, GLenum storageFormat = GL_RGBA8, void* data = nullptr);
     unsigned int createTexture(int width, int height, GLenum dataType, int nrComponents = 0, unsigned char* data = nullptr);
     unsigned int createTexture(int width, int height, GLenum dataType, GLenum format = GL_RGBA, GLenum storageFormat = GL_RGBA8, void* data = nullptr);

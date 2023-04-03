@@ -9,6 +9,48 @@
 #include "utils/shader.h"
 #include "utils/camera.h"
 #include "utils/gl_model.h"
+#include "utils/gl_funcs.h"
+
+struct EnviornmentCubemap {
+    AllocatedBuffer buffer;
+    unsigned int texture;
+    Shader pipeline;
+
+    EnviornmentCubemap(std::string path) {
+        pipeline = Shader("cubemap/map.vs", "cubemap/map.fs");
+
+        buffer = glutil::createUnitCube();
+        texture = glutil::loadCubemap(path);
+    }
+
+    void draw(glm::mat4 &projection, glm::mat4 &view) {
+        glDepthFunc(GL_LEQUAL);
+            pipeline.use();
+            pipeline.setMat4("projection", projection);
+            pipeline.setMat4("view", view);
+
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_CUBE_MAP, texture);
+            pipeline.setInt("skybox", 0);
+
+            glBindVertexArray(buffer.VAO);
+            glDrawArrays(GL_TRIANGLES, 0, 36);
+        glDepthFunc(GL_LESS);
+    }
+};
+
+struct ScreenQuad {
+    AllocatedBuffer buffer;
+
+    ScreenQuad() {
+        buffer = glutil::createScreenQuad();
+    }
+
+    void draw() {
+        glBindVertexArray(buffer.VAO);
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    }
+};
 
 class GLEngine {
     public:
@@ -35,7 +77,9 @@ class GLEngine {
         std::vector<Model> importedObjs;
         std::vector<Model> usableObjs;
         int chosenObjIndex = 0;
+
         Camera camera;
+        bool handleMouseMovement = true;
 
         float animationTime = 0.0f;
         int chosenAnimation = 0;

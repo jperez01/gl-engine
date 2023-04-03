@@ -102,7 +102,7 @@ void GLEngine::drawModels(Shader& shader, bool skipTextures) {
                     else if (name == "texture_metallic")
                         number = std::to_string(metallicNr++);
 
-                    string key = name + number;
+                    string key = name;
                     shader.setInt(key.c_str(), i);
 
                     glBindTexture(GL_TEXTURE_2D, mesh.textures[i].id);
@@ -191,7 +191,10 @@ void GLEngine::handleEvents() {
         } else if (event.type == SDL_KEYDOWN) {
             type = event.key.keysym.sym;
             if (type >= SDLK_RIGHT && type <= SDLK_UP) keyDown[type - SDLK_RIGHT] = true;
-        } else if (event.type == SDL_MOUSEMOTION && (!io.WantCaptureMouse || ImGuizmo::IsOver())) {
+
+            if (type == SDLK_m) handleMouseMovement = !handleMouseMovement;
+        } else if (event.type == SDL_MOUSEMOTION && (!io.WantCaptureMouse || ImGuizmo::IsOver()) 
+            && handleMouseMovement) {
             mouse_callback(event.motion.x, event.motion.y);
         } else if (event.type == SDL_MOUSEWHEEL) {
             scroll_callback(event.wheel.y);

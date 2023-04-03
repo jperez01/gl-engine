@@ -1,5 +1,4 @@
 #include "gl_engine.h"
-#include "utils/gl_funcs.h"
 
 #include <iostream>
 #include <iterator>
@@ -18,14 +17,14 @@
 void RenderEngine::init_resources() {
     camera = Camera(glm::vec3(0.0f, 0.0f, 7.0f));
     
-    pipeline = Shader("../../shaders/shadowPoints/model.vs", "../../shaders/shadowPoints/model.fs");
-    mapPipeline = Shader("../../shaders/cubemap/map.vs", "../../shaders/cubemap/map.fs");
-    cascadeMapPipeline = Shader("../../shaders/shadows/cascadeV.glsl", "../../shaders/shadows/map.fs", "../../shaders/shadows/cascadeG.glsl");
-    depthCubemapPipeline = Shader("../../shaders/shadowPoints/map.vs", "../../shaders/shadowPoints/map.fs",
-        "../../shaders/shadowPoints/map.gs");
+    pipeline = Shader("shadowPoints/model.vs", "shadowPoints/model.fs");
+    mapPipeline = Shader("cubemap/map.vs", "cubemap/map.fs");
+    cascadeMapPipeline = Shader("shadows/cascadeV.glsl", "shadows/map.fs", "shadows/cascadeG.glsl");
+    depthCubemapPipeline = Shader("shadowPoints/map.vs", "shadowPoints/map.fs",
+        "shadowPoints/map.gs");
 
-    debugCascadePipeline = Shader("../../shaders/cascade/cascadeDebugV.glsl", "../../shaders/cascade/cascadeDebugF.glsl");
-    debugDepthPipeline = Shader("../../shaders/cascade/mapDebugV.glsl", "../../shaders/cascade/mapDebugF.glsl");
+    debugCascadePipeline = Shader("cascade/cascadeDebugV.glsl", "cascade/cascadeDebugF.glsl");
+    debugDepthPipeline = Shader("cascade/mapDebugV.glsl", "cascade/mapDebugF.glsl");
     
     Model newModel("../../resources/objects/backpack/backpack.obj");
     loadModelData(newModel);
@@ -324,14 +323,14 @@ void RenderEngine::run() {
         }
 
         glDepthFunc(GL_LEQUAL);
-        glm::mat4 convertedView = glm::mat4(glm::mat3(view));
-        mapPipeline.use();
-        mapPipeline.setMat4("projection", projection);
-        mapPipeline.setMat4("view", convertedView);
+            glm::mat4 convertedView = glm::mat4(glm::mat3(view));
+            mapPipeline.use();
+            mapPipeline.setMat4("projection", projection);
+            mapPipeline.setMat4("view", convertedView);
 
-        glBindVertexArray(cubemapBuffer.VAO);
-        glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
-        glDrawArrays(GL_TRIANGLES, 0, 36);
+            glBindVertexArray(cubemapBuffer.VAO);
+            glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
+            glDrawArrays(GL_TRIANGLES, 0, 36);
         glDepthFunc(GL_LESS);
 
         debugDepthPipeline.use();

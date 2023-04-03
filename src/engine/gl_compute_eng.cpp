@@ -76,33 +76,7 @@ void ComputeEngine::run() {
         deltaTime *= 0.1;
         lastFrame = currentFrame;
 
-        while (SDL_PollEvent(&event)) {
-            ImGui_ImplSDL2_ProcessEvent(&event);
-            if (event.type == SDL_QUIT) {
-                closedWindow = true;
-            } else if (event.type == SDL_KEYDOWN) {
-                SDL_Keycode type = event.key.keysym.sym;
-
-                if (type == SDLK_UP)
-                    camera.processKeyboard(FORWARD, deltaTime);
-                
-                if (type == SDLK_DOWN)
-                    camera.processKeyboard(BACKWARD, deltaTime);
-
-                if (type == SDLK_LEFT)
-                    camera.processKeyboard(LEFT, deltaTime);
-
-                if (type == SDLK_RIGHT)
-                    camera.processKeyboard(RIGHT, deltaTime);
-            } else if (event.type == SDL_MOUSEMOTION && !io.WantCaptureMouse) {
-                mouse_callback(event.motion.x, event.motion.y);
-            } else if (event.type == SDL_MOUSEWHEEL) {
-                scroll_callback(event.wheel.y);
-            } else if (event.type == SDL_WINDOWEVENT
-                && event.window.event == SDL_WINDOWEVENT_RESIZED) {
-                framebuffer_callback(event.window.data1, event.window.data2);
-            }
-        }
+        handleEvents();
 
         if (importedObjs.size() != 0) {
             Model model = importedObjs[0];
