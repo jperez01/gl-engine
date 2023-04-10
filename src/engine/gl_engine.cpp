@@ -8,12 +8,6 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/string_cast.hpp>
 
-#include "imgui/imgui.h"
-#include "imgui/imgui_impl_opengl3.h"
-#include "imgui/imgui_impl_sdl.h"
-#include "imgui/imgui_stdlib.h"
-#include "ImGuizmo.h"
-
 void RenderEngine::init_resources() {
     camera = Camera(glm::vec3(0.0f, 0.0f, 7.0f));
     
@@ -26,7 +20,8 @@ void RenderEngine::init_resources() {
     debugCascadePipeline = Shader("cascade/cascadeDebugV.glsl", "cascade/cascadeDebugF.glsl");
     debugDepthPipeline = Shader("cascade/mapDebugV.glsl", "cascade/mapDebugF.glsl");
     
-    Model newModel("../../resources/objects/backpack/backpack.obj");
+    Model newModel("../../resources/objects/sponzaBasic/glTF/Sponza.gltf", GLTF);
+    newModel.model_matrix = glm::scale(glm::mat4(1.0f), glm::vec3(0.05f));
     loadModelData(newModel);
     usableObjs.push_back(newModel);
 
@@ -97,22 +92,14 @@ void RenderEngine::init_resources() {
 }
 
 void RenderEngine::run() {
-    float shininess = 100.0;
-    std::string path = "";
-    glm::vec3 translate = glm::vec3(0.0), rotation = glm::vec3(0.0), scale = glm::vec3(1.0);
-    ImGuizmo::OPERATION operation = ImGuizmo::OPERATION::TRANSLATE;
-
-    float startTime = static_cast<float>(SDL_GetTicks());
+    path = "";
+    startTime = static_cast<float>(SDL_GetTicks());
 
     while (!closedWindow) {
-        ImGuiIO& io = ImGui::GetIO(); (void)io;
+        handleBasicRenderLoop();
         float currentFrame = static_cast<float>(SDL_GetTicks());
-        deltaTime = currentFrame - lastFrame;
-        deltaTime *= 0.1;
-        lastFrame = currentFrame;
         animationTime = (currentFrame - startTime) / 1000.0f;
 
-        handleEvents();
         checkFrustum();
 
         glClearColor(1.0, 0.0, 0.0, 1.0);
@@ -182,99 +169,15 @@ void RenderEngine::run() {
         glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplSDL2_NewFrame();
-        ImGui::NewFrame();
-        ImGuizmo::BeginFrame();
-
-        ImGui::Begin("Info");
-        if (ImGui::CollapsingHeader("Point Lights")) {
-            for (int i = 0; i < 4; i++) {
-                std::string name = "Point Light " + std::to_string(i);
-                auto& currentLight = pointLights[i];
-                if (ImGui::TreeNode(name.c_str())) {
-                    ImGui::SliderFloat3("Position", (float*)&currentLight.position, -50.0, 50.0);
-                    ImGui::SliderFloat3("Ambient", (float*)&currentLight.ambient, 0.0, 1.0);
-                    ImGui::SliderFloat3("Specular",(float*) &currentLight.specular, 0.0, 1.0);
-                    ImGui::SliderFloat3("Diffuse", (float*)&currentLight.diffuse, 0.0, 1.0);
-                    ImGui::TreePop();
-                }
-            }
-        }
-
-        if (ImGui::CollapsingHeader("Directional Light")) {
-            ImGui::SliderFloat3("Direction", (float*)&directionLight.direction, -1.0, 1.0);
-            ImGui::SliderFloat3("Ambient", (float*)&directionLight.ambient, 0.0, 1.0);
-            ImGui::SliderFloat3("Specular", (float*)&directionLight.specular, 0.0, 1.0);
-            ImGui::SliderFloat3("Diffuse", (float*)&directionLight.diffuse, 0.0, 1.0);
-        }
-
-        if (ImGui::CollapsingHeader("Models")) {
-            ImGui::InputText("Model Path", &path);
-            if (ImGui::Button("Load Model")) {
-                std::string chosenPath = "../../resources/objects/" + path;
-                std::thread(&RenderEngine::async_load_model, this, chosenPath).detach();
-            }
-
-            if (usableObjs.size() != 0) {
-                ImGui::ListBoxHeader("Models");
-                for (size_t i = 0; i < usableObjs.size(); i++) {
-                    std::string selectName = "Object " + std::to_string(i);
-                    if (ImGui::Selectable(selectName.c_str())) {
-                        chosenObjIndex = i;
-                    }
-                }
-                ImGui::ListBoxFooter();
-                ImGui::SliderInt("Animation", &chosenAnimation, 0, usableObjs[chosenObjIndex].numAnimations-1);
-                if (ImGui::SliderFloat3("Translation", (float*)&translate, -10.0, 10.0)
-                    || ImGui::SliderFloat3("Rotation", (float*)&rotation, 0.0, 90.0)
-                    || ImGui::SliderFloat3("Scale", (float*)&scale, 0.01f, 1.0f)) {
-                    glm::mat4 transformation = glm::mat4(1.0f);
-                    transformation = glm::translate(transformation, translate);
-                    transformation = glm::scale(transformation, scale);
-
-                    usableObjs[chosenObjIndex].model_matrix = transformation;
-                }
-            }
-        }
-
-        if (ImGui::CollapsingHeader("Extras")) {
-            ImGui::RadioButton("Using Radar", camera.shouldUseRadar);
-            ImGui::SliderFloat("Shininess", &shininess, 1, 200);
-            if(ImGui::RadioButton("Translate", operation == ImGuizmo::TRANSLATE)) {
-                operation = ImGuizmo::TRANSLATE;
-            }
-            if(ImGui::RadioButton("Rotate", operation == ImGuizmo::ROTATE)) {
-                operation = ImGuizmo::ROTATE;
-            }
-            if(ImGui::RadioButton("Scale", operation == ImGuizmo::SCALE)) {
-                operation = ImGuizmo::SCALE;
-            }
-        }
-        ImGui::End();
-
         glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)WINDOW_WIDTH/ (float)WINDOW_HEIGHT, 0.1f, 100.0f);
         glm::mat4 view = camera.getViewMatrix();
-
-        ImGuizmo::SetOrthographic(false);
-        ImGuizmo::SetRect(0, 0, io.DisplaySize.x, io.DisplaySize.y);
-        ImGuizmo::Manipulate(glm::value_ptr(view), glm::value_ptr(projection), operation,
-            ImGuizmo::LOCAL, glm::value_ptr(usableObjs[chosenObjIndex].model_matrix));
-
-        if (importedObjs.size() != 0) {
-            Model model = importedObjs[0];
-            loadModelData(model);
-
-            importedObjs.pop_back();
-            usableObjs.push_back(model);
-        }
 
         pipeline.use();
 
         pipeline.setMat4("projection", projection);
         pipeline.setMat4("view", view);
         pipeline.setFloat("shininess", shininess);
-        pipeline.setFloat("far_plane", far);
+        pipeline.setFloat("far_plane", cameraFarPlane);
 
         pipeline.setVec3("dirLight.direction", directionLight.direction);
         pipeline.setVec3("dirLight.ambient", directionLight.ambient);
@@ -341,9 +244,7 @@ void RenderEngine::run() {
             glBindVertexArray(quadBuffer.VAO);
             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
         }
-
-        ImGui::Render();
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        handleImGui();
 
         SDL_GL_SwapWindow(window);
     }
@@ -425,6 +326,82 @@ void RenderEngine::renderScene(Shader& shader, bool skipTextures) {
     shader.setMat4("model", planeModel);
     glBindVertexArray(planeBuffer.VAO);
     glDrawArrays(GL_TRIANGLES, 0, 6);
+}
+
+void RenderEngine::handleImGui() {
+    ImGuiIO& io = ImGui::GetIO(); (void)io;
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplSDL2_NewFrame();
+    ImGui::NewFrame();
+    ImGuizmo::BeginFrame();
+
+    ImGui::Begin("Info");
+    if (ImGui::CollapsingHeader("Point Lights")) {
+        for (int i = 0; i < 4; i++) {
+            std::string name = "Point Light " + std::to_string(i);
+            auto& currentLight = pointLights[i];
+            if (ImGui::TreeNode(name.c_str())) {
+                ImGui::SliderFloat3("Position", (float*)&currentLight.position, -50.0, 50.0);
+                ImGui::SliderFloat3("Ambient", (float*)&currentLight.ambient, 0.0, 1.0);
+                ImGui::SliderFloat3("Specular",(float*) &currentLight.specular, 0.0, 1.0);
+                ImGui::SliderFloat3("Diffuse", (float*)&currentLight.diffuse, 0.0, 1.0);
+                ImGui::TreePop();
+            }
+        }
+    }
+
+    if (ImGui::CollapsingHeader("Directional Light")) {
+        ImGui::SliderFloat3("Direction", (float*)&directionLight.direction, -1.0, 1.0);
+        ImGui::SliderFloat3("Ambient", (float*)&directionLight.ambient, 0.0, 1.0);
+        ImGui::SliderFloat3("Specular", (float*)&directionLight.specular, 0.0, 1.0);
+        ImGui::SliderFloat3("Diffuse", (float*)&directionLight.diffuse, 0.0, 1.0);
+    }
+
+    if (ImGui::CollapsingHeader("Models")) {
+        ImGui::InputText("Model Path", &path);
+        if (ImGui::Button("Load Model")) {
+            std::string chosenPath = "../../resources/objects/" + path;
+            std::thread(&RenderEngine::async_load_model, this, chosenPath).detach();
+        }
+
+        if (usableObjs.size() != 0) {
+            ImGui::ListBoxHeader("Models");
+            for (size_t i = 0; i < usableObjs.size(); i++) {
+                std::string selectName = "Object " + std::to_string(i);
+                if (ImGui::Selectable(selectName.c_str())) {
+                    chosenObjIndex = i;
+                }
+            }
+            ImGui::ListBoxFooter();
+            ImGui::SliderInt("Animation", &chosenAnimation, 0, usableObjs[chosenObjIndex].numAnimations-1);
+        }
+    }
+
+    if (ImGui::CollapsingHeader("Extras")) {
+        ImGui::RadioButton("Using Radar", camera.shouldUseRadar);
+        ImGui::SliderFloat("Shininess", &shininess, 1, 200);
+        if(ImGui::RadioButton("Translate", operation == ImGuizmo::TRANSLATE)) {
+            operation = ImGuizmo::TRANSLATE;
+        }
+        if(ImGui::RadioButton("Rotate", operation == ImGuizmo::ROTATE)) {
+            operation = ImGuizmo::ROTATE;
+        }
+        if(ImGui::RadioButton("Scale", operation == ImGuizmo::SCALE)) {
+            operation = ImGuizmo::SCALE;
+        }
+    }
+    ImGui::End();
+
+    glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)WINDOW_WIDTH/ (float)WINDOW_HEIGHT, 0.1f, 100.0f);
+    glm::mat4 view = camera.getViewMatrix();
+
+    ImGuizmo::SetOrthographic(false);
+    ImGuizmo::SetRect(0, 0, io.DisplaySize.x, io.DisplaySize.y);
+    ImGuizmo::Manipulate(glm::value_ptr(view), glm::value_ptr(projection), operation,
+        ImGuizmo::LOCAL, glm::value_ptr(usableObjs[chosenObjIndex].model_matrix));
+
+    ImGui::Render();
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
 
 void RenderEngine::drawCascadeVolumeVisualizers(const std::vector<glm::mat4>& lightMatrices, Shader* shader)

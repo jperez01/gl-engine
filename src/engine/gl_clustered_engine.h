@@ -23,9 +23,14 @@ class ClusteredEngine : public GLEngine {
 public:
     void init_resources();
     void run();
-
+    void handleImGui();
+    
 private:
     void init_SSBOs();
+
+    float lightMultiplier = 10.0f;
+    float multiplier = 0.01f;
+    bool shouldUseFragFunction = false;
 
     DirLight directionalLight;
     std::vector<ClusteredLight> lights;

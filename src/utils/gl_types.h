@@ -6,6 +6,12 @@
 #include <string>
 #include <unordered_map>
 
+struct SimpleDirectionalLight {
+    glm::vec3 direction;
+
+    glm::vec3 color;
+};
+
 struct DirLight {
     glm::vec3 direction;
 

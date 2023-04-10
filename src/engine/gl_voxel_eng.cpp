@@ -1,20 +1,13 @@
 #include "gl_voxel_eng.h"
 
-#include "imgui/imgui.h"
-#include "imgui/imgui_impl_opengl3.h"
-#include "imgui/imgui_impl_sdl.h"
-#include "imgui/imgui_stdlib.h"
-
 #include "glm/gtx/component_wise.hpp"
 
 void VoxelEngine::init_resources() {
-    camera = Camera(glm::vec3(0.0f, 0.0f, 10.0f));
+    camera = Camera(glm::vec3(0.0f, 0.0f, 7.0f));
 
     voxelGridPipeline = Shader("coneTracing/voxel.vs", "coneTracing/voxel.fs", "coneTracing/voxel.gs");
     renderPassPipeline = Shader("coneTracing/colorPass.vs", "coneTracing/colorPass.fs");
-    shadowMapPipeline = Shader("shadows/map.vs", "shadows/map.fs");
     quadPipeline = Shader("shadows/debug.vs", "shadows/debug.fs");
-    cubemapPipeline = Shader("cubemap/map.vs", "cubemap/map.fs");
 
     Model newModel("../../resources/objects/sponzaBasic/glTF/Sponza.gltf", GLTF);
     newModel.model_matrix = glm::scale(glm::mat4(1.0f), glm::vec3(0.05f));
@@ -23,28 +16,13 @@ void VoxelEngine::init_resources() {
 
     voxelGridTexture = glutil::createTexture3D(gridSize, gridSize, gridSize);
     glBindImageTexture(0, voxelGridTexture, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA8);
-
-    glCreateFramebuffers(1, &shadowMapFBO);
-    shadowDepthTexture = glutil::createTexture(shadowResolution, shadowResolution, 
-        GL_FLOAT, GL_DEPTH_COMPONENT, GL_DEPTH_COMPONENT32F);
-
-    glNamedFramebufferTexture(shadowMapFBO, GL_DEPTH_ATTACHMENT, shadowDepthTexture, 0);
-    glNamedFramebufferDrawBuffer(shadowMapFBO, GL_NONE);
-    glNamedFramebufferReadBuffer(shadowMapFBO, GL_NONE);
-
-    int status = glCheckNamedFramebufferStatus(shadowMapFBO, GL_FRAMEBUFFER);
-    if (status != GL_FRAMEBUFFER_COMPLETE) {
-        std::cout << "Framebuffer is not complete!" << std::endl;
-    }
-
+        
     quadBuffer = glutil::createScreenQuad();
-
-    cubemapBuffer = glutil::createUnitCube();
     std::string cubemapPath = "../../resources/textures/skybox/";
-    cubemapTexture = glutil::loadCubemap(cubemapPath);
-
-    directionalLight.direction = glm::vec3(0.0f, -1.0f, 0.0f);
-    directionalLight.color = glm::vec3(0.2f);
+    cubemap = EnviornmentCubemap(cubemapPath);
+    
+    directionalLight.direction = glm::vec3(-0.2f, -1.0f, -0.3f);
+    directionalLight.color = glm::vec3(0.8f);
 
     glm::vec3 pointLightPositions[] = {
         glm::vec3( 0.7f,  2.0f,  5.0f),
@@ -66,100 +44,92 @@ void VoxelEngine::init_resources() {
     glm::vec4 difference = usableObjs[0].model_matrix * (midpoint - usableObjs[0].aabb.maxPoint);
     maxCoord = glm::compMax(glm::abs(difference)) + 1.0f;
     voxelWorldSize = maxCoord * 2.0f / gridSize;
+
+    // Create Directional Light Shadow Info
+    cascadeMapPipeline = Shader("shadows/cascadeV.glsl", "shadows/map.fs", "shadows/cascadeG.glsl");
+    glCreateBuffers(1, &matricesUBO);
+    glNamedBufferData(matricesUBO, sizeof(glm::mat4x4) * 16, nullptr, GL_STATIC_DRAW);
+    glBindBufferBase(GL_UNIFORM_BUFFER, 0, matricesUBO);
+
+    glGenTextures(1, &lightDepthMaps);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, lightDepthMaps);
+    glTexImage3D(
+        GL_TEXTURE_2D_ARRAY, 0, GL_DEPTH_COMPONENT32F, depthMapResolution, depthMapResolution, int(shadowCascadeLevels.size()) + 1,
+        0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
+
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+
+    glCreateFramebuffers(1, &shadowMapFBO);
+    glNamedFramebufferTexture(shadowMapFBO, GL_DEPTH_ATTACHMENT, lightDepthMaps, 0);
+    glNamedFramebufferDrawBuffer(shadowMapFBO, GL_NONE);
+    glNamedFramebufferReadBuffer(shadowMapFBO, GL_NONE);
+
+    int status = glCheckNamedFramebufferStatus(shadowMapFBO, GL_FRAMEBUFFER);
+    if (status != GL_FRAMEBUFFER_COMPLETE) {
+        std::cout << "Framebuffer is not complete!" << std::endl;
+    }
 }
 
 void VoxelEngine::run() {
-    float shininess = 200.0f;
-    glm::vec3 lightPos(-2.0f, 4.0f, -1.0f);
-
     createVoxelGrid();
 
     while (!closedWindow) {
-        float currentFrame = static_cast<float>(SDL_GetTicks());
-        deltaTime = currentFrame - lastFrame;
-        deltaTime *= 0.01f;
-        lastFrame = currentFrame;
-
-        handleEvents();
-
-        if (importedObjs.size() != 0) {
-            Model model = importedObjs[0];
-            loadModelData(model);
-
-            importedObjs.pop_back();
-            usableObjs.push_back(model);
-        }
+        handleBasicRenderLoop();
 
         glClearColor(0.0, 0.2, 0.2, 1.0);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplSDL2_NewFrame();
-        ImGui::NewFrame();
-
-        ImGui::Begin("Info");
-        if (ImGui::CollapsingHeader("Global Illumination Info")) {
-            if (ImGui::SliderFloat("Voxel World Size", &voxelWorldSize, 0.1f, 2.0f)) {
-                createVoxelGrid();
-            }
-            ImGui::SliderFloat("Max Distance", &maxDistance, 0.0f, 20.0f);
-            
-            ImGui::SliderFloat("Specular Angle Multiplier", &specularAngleMultiplier, 0.0f, 1.0f);
-            ImGui::SliderFloat("Indirect Light Multiplier", &indirectLightMultiplier, 0.0f, 1.0f);
-        }
-        if (ImGui::CollapsingHeader("Directional Light Info")) {
-            ImGui::SliderFloat3("Direction", (float*)&directionalLight.direction, -1.0f, 1.0f);
-            ImGui::ColorEdit3("Color", (float*)&directionalLight.color);
-            ImGui::SliderFloat("Light Multiplier", &dirLightMultiplier, 0.0f, 2.0f);
-            
-            ImGui::Checkbox("Should show shadow map", &shouldShowShadowMap);
-            ImGui::SliderFloat3("Light Position for Shadows", (float*)&lightPos, -10.0f, 10.0f);
-        }
-        ImGui::End();
-        directionalLight.direction = glm::normalize(directionalLight.direction);
-
-        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)WINDOW_WIDTH/ (float)WINDOW_HEIGHT, 0.1f, 100.0f);
+        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)WINDOW_WIDTH/ (float)WINDOW_HEIGHT, cameraNearPlane, cameraFarPlane);
         glm::mat4 view = camera.getViewMatrix();
 
         // Create shadowmap
-        float near_plane = 1.0f, far_plane = 100.0f;
-        glm::mat4 lightProjection = glm::ortho(-200.0f, 200.0f, -200.0f, 200.0f, near_plane, far_plane);
-        glm::mat4 lightView = glm::lookAt(lightPos, lightPos + directionalLight.direction, glm::vec3(0.0f, 1.0f, 0.0f));
-        glm::mat4 lightSpaceMatrix = lightProjection * lightView;
-        
-        shadowMapPipeline.use();
-        shadowMapPipeline.setMat4("lightSpaceMatrix", lightSpaceMatrix);
+        auto lightMatrices = getLightSpaceMatrices();
+        glNamedBufferSubData(matricesUBO, 0, sizeof(glm::mat4x4) * lightMatrices.size(), lightMatrices.data());
 
+        cascadeMapPipeline.use();
+
+        glEnable(GL_CULL_FACE);
+        glEnable(GL_DEPTH_CLAMP);
         glBindFramebuffer(GL_FRAMEBUFFER, shadowMapFBO);
-            glViewport(0, 0, shadowResolution, shadowResolution);
+            glViewport(0, 0, depthMapResolution, depthMapResolution);
             glClear(GL_DEPTH_BUFFER_BIT);
 
-            glCullFace(GL_FRONT);
-            drawModels(shadowMapPipeline);
+            if (cullFront) glCullFace(GL_FRONT);
+            drawModels(cascadeMapPipeline, true);
             glCullFace(GL_BACK);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glDisable(GL_DEPTH_CLAMP);
+        glDisable(GL_CULL_FACE);
 
         glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
         // Final Render Pass
-        glBindTextureUnit(7, shadowDepthTexture);
+        glActiveTexture(GL_TEXTURE7);
+        glBindTexture(GL_TEXTURE_2D_ARRAY, lightDepthMaps);
 
         renderPassPipeline.use();
 
-        renderPassPipeline.setInt("shadowMap", 7);
-        renderPassPipeline.setMat4("lightSpaceMatrix", lightSpaceMatrix);
-        renderPassPipeline.setVec3("dirLightPos", lightPos);
+        renderPassPipeline.setInt("cascadedMap", 7);
+        renderPassPipeline.setInt("cascadeCount", shadowCascadeLevels.size());
+        for (size_t i = 0; i < shadowCascadeLevels.size(); i++) {
+            renderPassPipeline.setFloat("cascadePlaneDistances[" + std::to_string(i) + "]", shadowCascadeLevels[i]);
+        }
+        renderPassPipeline.setFloat("far_plane", cameraFarPlane);
+        renderPassPipeline.setBool("showShadows", shouldShowShadowMap);
 
         renderPassPipeline.setMat4("view", view);
         renderPassPipeline.setMat4("projection", projection);
         renderPassPipeline.setFloat("shininess", shininess);
         renderPassPipeline.setVec3("viewPos", camera.Position);
-
-        renderPassPipeline.setFloat("VOXEL_SIZE", voxelSize);
-        renderPassPipeline.setFloat("MAX_DIST", maxDistance);
+        renderPassPipeline.setBool("useAO", useAO);
 
         renderPassPipeline.setFloat("dirLightMultiplier", dirLightMultiplier);
         renderPassPipeline.setFloat("indirectLightMultiplier", indirectLightMultiplier);
         renderPassPipeline.setFloat("specularAngleMultiplier", specularAngleMultiplier);
+
+        renderPassPipeline.setFloat("MAX_DIST", maxDistance);
         renderPassPipeline.setInt("gridSize", gridSize);
         renderPassPipeline.setFloat("voxelWorldSize", voxelWorldSize);
         renderPassPipeline.setMat4("voxelProjection", finalVoxelProjection);
@@ -177,36 +147,43 @@ void VoxelEngine::run() {
         renderPassPipeline.setInt("voxelTexture", 8);
         drawModels(renderPassPipeline);
 
-        //Show Debug Shadowmap
-        if (shouldShowShadowMap) {
-            quadPipeline.use();
-            quadPipeline.setInt("depthMap", 7);
-            quadPipeline.setFloat("near_plane", near_plane);
-            quadPipeline.setFloat("far_plane", far_plane);
-            glBindVertexArray(quadBuffer.VAO);
-            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-        }
-
         // Render Cubemap
-        glDepthFunc(GL_LEQUAL);
-            glm::mat4 convertedView = glm::mat4(glm::mat3(view));
-            cubemapPipeline.use();
-            cubemapPipeline.setMat4("projection", projection);
-            cubemapPipeline.setMat4("view", convertedView);
-            
-            glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
-            cubemapPipeline.setInt("skybox", 0);
+        cubemap.draw(projection, view);
 
-            glBindVertexArray(cubemapBuffer.VAO);
-            glDrawArrays(GL_TRIANGLES, 0, 36);
-        glDepthFunc(GL_LESS);
-
-        ImGui::Render();
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        handleImGui();
 
         SDL_GL_SwapWindow(window);
     }
+}
+
+void VoxelEngine::handleImGui() {
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplSDL2_NewFrame();
+    ImGui::NewFrame();
+
+    ImGui::Begin("Info");
+    if (ImGui::CollapsingHeader("Global Illumination Info")) {
+        if (ImGui::SliderFloat("Voxel World Size", &voxelWorldSize, 0.1f, 2.0f)) {
+        }
+        ImGui::SliderFloat("Max Distance", &maxDistance, 0.0f, 20.0f);
+        ImGui::Checkbox("Use Ambient Occlusion", &useAO);
+        
+        ImGui::SliderFloat("Specular Angle Multiplier", &specularAngleMultiplier, 0.0f, 1.0f);
+        ImGui::SliderFloat("Indirect Light Multiplier", &indirectLightMultiplier, 0.0f, 3.0f);
+    }
+    if (ImGui::CollapsingHeader("Directional Light Info")) {
+        ImGui::SliderFloat3("Direction", (float*)&directionalLight.direction, -1.0f, 1.0f);
+        ImGui::ColorEdit3("Color", (float*)&directionalLight.color);
+        ImGui::SliderFloat("Light Multiplier", &dirLightMultiplier, 0.0f, 4.0f);
+        
+        ImGui::Checkbox("Should show shadows", &shouldShowShadowMap);
+        ImGui::Checkbox("Should cull front", &cullFront);
+    }
+    ImGui::End();
+    directionalLight.direction = glm::normalize(directionalLight.direction);
+
+    ImGui::Render();
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
 
 void VoxelEngine::createVoxelGrid() {
@@ -247,4 +224,79 @@ void VoxelEngine::createVoxelGrid() {
         glEnable(GL_BLEND);
 
     glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
+}
+
+std::vector<glm::mat4> VoxelEngine::getLightSpaceMatrices() {
+    std::vector<glm::mat4> result;
+
+    for (int i = 0; i < shadowCascadeLevels.size() + 1; i++) {
+        if (i == 0)
+            result.push_back(getLightSpaceMatrix(cameraNearPlane, shadowCascadeLevels[i]));
+        else if (i < shadowCascadeLevels.size())
+            result.push_back(getLightSpaceMatrix(shadowCascadeLevels[i-1], shadowCascadeLevels[i]));
+        else
+            result.push_back(getLightSpaceMatrix(shadowCascadeLevels[i-1], cameraFarPlane));
+    }
+
+    return result;
+}
+
+glm::mat4 VoxelEngine::getLightSpaceMatrix(float nearPlane, float farPlane) {
+    const auto proj = glm::perspective(
+        glm::radians(camera.Zoom), (float)WINDOW_WIDTH / (float)WINDOW_HEIGHT, nearPlane,
+        farPlane);
+    auto corners = getFrustumCornerWorldSpace(proj, camera.getViewMatrix());
+
+    glm::vec3 center(0, 0, 0);
+    for (const auto& v : corners) center += glm::vec3(v);
+    center /= corners.size();
+
+    const auto lightView = glm::lookAt(center + directionalLight.direction, center, glm::vec3(0.0f, 1.0f, 0.0f));
+
+    float minX = std::numeric_limits<float>::max();
+    float maxX = std::numeric_limits<float>::lowest();
+    float minY = std::numeric_limits<float>::max();
+    float maxY = std::numeric_limits<float>::lowest();
+    float minZ = std::numeric_limits<float>::max();
+    float maxZ = std::numeric_limits<float>::lowest();
+    for (const auto& v : corners)
+    {
+        const auto trf = lightView * v;
+        minX = std::min(minX, trf.x);
+        maxX = std::max(maxX, trf.x);
+        minY = std::min(minY, trf.y);
+        maxY = std::max(maxY, trf.y);
+        minZ = std::min(minZ, trf.z);
+        maxZ = std::max(maxZ, trf.z);
+    }
+
+    float zMult = 10.0f;
+    if (minZ < 0) minZ *= zMult;
+    else minZ /= zMult;
+
+    if (maxZ < 0) maxZ /= zMult;
+    else maxZ *= zMult;
+
+    const glm::mat4 lightProjection = glm::ortho(minX, maxX, minY, maxY, minZ, maxZ);
+    return lightProjection * lightView;
+}
+
+std::vector<glm::vec4> VoxelEngine::getFrustumCornerWorldSpace(const glm::mat4& proj, const glm::mat4& view) {
+    const auto inv = glm::inverse(proj * view);
+
+    std::vector<glm::vec4> frustumCorners;
+    for (unsigned int x = 0; x < 2; x++) {
+        for (unsigned int y = 0; y < 2; y++) {
+            for (unsigned int z = 0; z < 2; z++) {
+                const glm::vec4 pt = inv * glm::vec4(
+                    2.0f * x - 1.0f,
+                    2.0f * y - 1.0f,
+                    2.0f * z - 1.0f,
+                    1.0f);
+                frustumCorners.push_back(pt / pt.w);
+            }
+        }
+    }
+
+    return frustumCorners;
 }

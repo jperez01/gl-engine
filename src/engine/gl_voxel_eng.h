@@ -15,6 +15,7 @@ class VoxelEngine : public GLEngine {
     public:
         void init_resources();
         void run();
+        void handleImGui();
 
         void createVoxelGrid();
     
@@ -25,18 +26,23 @@ class VoxelEngine : public GLEngine {
             specularAngleMultiplier = 0.1f;
         int gridSize = 256;
         float someLod = 0;
+        bool useAO = true;
 
-        bool shouldShowShadowMap = false;
+        bool shouldShowShadowMap = false, cullFront = false;
+        float cameraNearPlane = 0.1f;
+        float cameraFarPlane = 200.0f;
+        int depthMapResolution = 2048;
         unsigned int shadowMapFBO;
-        unsigned int shadowDepthTexture, shadowResolution = 2048;
-        Shader shadowMapPipeline;
+        unsigned int lightDepthMaps;
+        unsigned int matricesUBO;
+        std::vector<float> shadowCascadeLevels = { cameraFarPlane / 50.0f, 
+            cameraFarPlane / 25.0f, cameraFarPlane / 10.0f, cameraFarPlane / 5.0f, cameraFarPlane / 2.0f };
+        Shader cascadeMapPipeline;
 
         AllocatedBuffer quadBuffer;
         Shader quadPipeline;
 
-        AllocatedBuffer cubemapBuffer;
-        unsigned int cubemapTexture;
-        Shader cubemapPipeline;
+        EnviornmentCubemap cubemap;
 
         glm::mat4 finalVoxelProjection;
 
@@ -44,4 +50,8 @@ class VoxelEngine : public GLEngine {
         SimpleDirLight directionalLight;
 
         Shader voxelGridPipeline, renderPassPipeline;
+
+        std::vector<glm::mat4> getLightSpaceMatrices();
+        glm::mat4 getLightSpaceMatrix(float nearPlane, float farPlane);
+        std::vector<glm::vec4> getFrustumCornerWorldSpace(const glm::mat4& proj, const glm::mat4& view);
 };

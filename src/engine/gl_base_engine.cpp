@@ -71,11 +71,13 @@ void GLEngine::drawModels(Shader& shader, bool skipTextures) {
         for (int j = 0; j < model.meshes.size(); j++) {
             Mesh& mesh = model.meshes[j];
             if (!skipTextures) {
+                /*
                 unsigned int diffuseNr = 1;
                 unsigned int specularNr = 1;
                 unsigned int normalNr = 1;
                 unsigned int heightNr = 1;
                 unsigned int metallicNr = 1;
+                */
 
                 if (mesh.textures.size() != 4) {
                     shader.setBool("noMetallicMap", true);
@@ -90,7 +92,7 @@ void GLEngine::drawModels(Shader& shader, bool skipTextures) {
 
                     string number;
                     string name = mesh.textures[i].type;
-                    
+                    /*
                     if (name == "texture_diffuse")
                         number = std::to_string(diffuseNr++);
                     else if (name == "texture_specular")
@@ -101,6 +103,7 @@ void GLEngine::drawModels(Shader& shader, bool skipTextures) {
                         number = std::to_string(heightNr++);
                     else if (name == "texture_metallic")
                         number = std::to_string(metallicNr++);
+                    */
 
                     string key = name;
                     shader.setInt(key.c_str(), i);
@@ -176,7 +179,19 @@ void GLEngine::loadModelData(Model& model) {
     }
 }
 
-void GLEngine::handleEvents() {
+void GLEngine::handleBasicRenderLoop()
+{
+    float currentFrame = static_cast<float>(SDL_GetTicks());
+    deltaTime = currentFrame - lastFrame;
+    deltaTime *= 0.01f;
+    lastFrame = currentFrame;
+
+    handleEvents();
+    handleImportedObjs();
+}
+
+void GLEngine::handleEvents()
+{
     SDL_Event event;
     SDL_Keycode type;
     ImGuiIO& io = ImGui::GetIO(); (void)io;
@@ -220,6 +235,16 @@ void GLEngine::handleEvents() {
 
         if (type == SDLK_RIGHT)
             camera.processKeyboard(RIGHT, deltaTime);
+    }
+}
+
+void GLEngine::handleImportedObjs() {
+    if (importedObjs.size() != 0) {
+        Model model = importedObjs[0];
+        loadModelData(model);
+
+        importedObjs.pop_back();
+        usableObjs.push_back(model);
     }
 }
 

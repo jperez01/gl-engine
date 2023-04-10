@@ -9,6 +9,7 @@ public:
     void init_resources();
     void run();
     void handleEvents();
+    void handleImGui();
 
     void createSphere();
     void createIrradianceMap();
@@ -23,6 +24,8 @@ private:
 
     AllocatedBuffer cubemapBuffer;
     AllocatedBuffer quadBuffer;
+
+    bool switchValues = false;
 
     unsigned int hdrTexture;
     unsigned int cubemapTexture, irradianceMap;

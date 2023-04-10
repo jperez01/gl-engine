@@ -6,6 +6,7 @@ class ComputeEngine : public GLEngine {
 public:
     void init_resources();
     void run();
+    void handleImGui();
 
     void createValues();
 

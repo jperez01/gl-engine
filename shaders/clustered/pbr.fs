@@ -58,10 +58,10 @@ uniform mat4 projection;
 
 uniform DirLight dirLight;
 
-uniform sampler2D texture_diffuse1;
-uniform sampler2D texture_specular1;
-uniform sampler2D texture_normal1;
-uniform sampler2D texture_metallic1;
+uniform sampler2D texture_diffuse;
+uniform sampler2D texture_specular;
+uniform sampler2D texture_normal;
+uniform sampler2D texture_metallic;
 
 uniform bool noNormalMap;
 uniform bool useFragNormalFunction;
@@ -84,15 +84,15 @@ float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness);
 void main()
 {             
     // retrieve data from gbuffer
-    vec3 albedo = texture(texture_diffuse1, TexCoords).rgb;
+    vec3 albedo = texture(texture_diffuse, TexCoords).rgb;
     float metallic;
     float roughness;
     if (noMetallicMap) {
         metallic = 0.2;
         roughness = 0.8;
     } else {
-        metallic = texture(texture_metallic1, TexCoords).b;
-        roughness = texture(texture_metallic1, TexCoords).g;
+        metallic = texture(texture_metallic, TexCoords).b;
+        roughness = texture(texture_metallic, TexCoords).g;
     }
 
     vec3 normal;
@@ -101,7 +101,7 @@ void main()
         if (useFragNormalFunction) {
             normal = getNormalFromMap();
         } else {
-            vec3 tangentNormal = texture(texture_normal1, TexCoords).xyz * 2.0 - 1.0;
+            vec3 tangentNormal = texture(texture_normal, TexCoords).xyz * 2.0 - 1.0;
             normal = normalize(TBN * tangentNormal);
         }
     }
@@ -137,7 +137,7 @@ void main()
 
 vec3 getNormalFromMap()
 {
-    vec3 tangentNormal = texture(texture_normal1, TexCoords).xyz * 2.0 - 1.0;
+    vec3 tangentNormal = texture(texture_normal, TexCoords).xyz * 2.0 - 1.0;
 
     vec3 Q1  = dFdx(FragPos);
     vec3 Q2  = dFdy(FragPos);

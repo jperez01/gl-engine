@@ -1,16 +1,10 @@
 #include "gl_compute_eng.h"
-#include "utils/gl_funcs.h"
-
-#include "imgui/imgui.h"
-#include "imgui/imgui_impl_opengl3.h"
-#include "imgui/imgui_impl_sdl.h"
-#include "imgui/imgui_stdlib.h"
 
 #include <random>
 
 void ComputeEngine::init_resources() {
     camera = Camera(glm::vec3(0, 0, -1.0f), glm::vec3(0.0, 1.0f, 0.0f), 90.0, 0.0);
-    computePipeline = ComputeShader("../../shaders/compute/basic.glsl");
+    computePipeline = ComputeShader("compute/basic.glsl");
 
     imgTexture = glutil::createTexture(imgWidth, imgHeight, GL_FLOAT, GL_RGBA, GL_RGBA32F, nullptr);
     glBindImageTexture(0, imgTexture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
@@ -18,7 +12,7 @@ void ComputeEngine::init_resources() {
     std::string cubemapPath = "../../resources/textures/skybox/";
     cubemapTexture = glutil::loadCubemap(cubemapPath);
 
-    renderPipeline = Shader("../../shaders/default/defaultScreen.vs", "../../shaders/default/defaultTexture.fs");
+    renderPipeline = Shader("default/defaultScreen.vs", "default/defaultTexture.fs");
 
     quadBuffer = glutil::createScreenQuad();
 
@@ -66,25 +60,10 @@ void ComputeEngine::createValues() {
 
 void ComputeEngine::run() {
     bool closedWindow = false;
-    SDL_Event event;
-    int shininess = 10;
 
     while (!closedWindow) {
-        ImGuiIO& io = ImGui::GetIO(); (void)io;
+        handleBasicRenderLoop();
         float currentFrame = static_cast<float>(SDL_GetTicks());
-        deltaTime = currentFrame - lastFrame;
-        deltaTime *= 0.1;
-        lastFrame = currentFrame;
-
-        handleEvents();
-
-        if (importedObjs.size() != 0) {
-            Model model = importedObjs[0];
-            loadModelData(model);
-
-            importedObjs.pop_back();
-            usableObjs.push_back(model);
-        }
 
         glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)imgWidth/ (float)imgHeight, 0.1f, 100.0f);
         float near = -5.0f, far = 25.0f;
@@ -136,59 +115,6 @@ void ComputeEngine::run() {
         glClearColor(1.0, 0.0, 0.0, 1.0);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplSDL2_NewFrame();
-        ImGui::NewFrame();
-
-        ImGui::Begin("Info");
-        if (ImGui::CollapsingHeader("Spheres")) {
-            for (int i = 0; i < 15; i++) {
-                std::string name = "Sphere  " + std::to_string(i);
-                auto& currentLight = spheres[i];
-                if (ImGui::TreeNode(name.c_str())) {
-                    ImGui::SliderFloat3("Position", (float*)&currentLight.origin, -50.0, 50.0);
-                    ImGui::SliderFloat("Radius",(float*) &currentLight.radius, 1.0, 100.0);
-                    ImGui::SliderFloat3("Albedo", (float*)&currentLight.albedo, 0.0, 1.0);
-                    ImGui::SliderFloat3("Specular", (float*)&currentLight.specular, 0.0, 1.0);
-                    ImGui::TreePop();
-                }
-            }
-        }
-        if (ImGui::CollapsingHeader("Lights")) {
-            for (int i = 0; i < 4; i++) {
-                std::string name = "Light  " + std::to_string(i);
-                auto& currentLight = pointLights[i];
-                if (ImGui::TreeNode(name.c_str())) {
-                    ImGui::SliderFloat3("Position", (float*)&currentLight.position, -50.0, 50.0);
-                    ImGui::SliderFloat3("Ambient",(float*) &currentLight.ambient, 0.0, 1.0);
-                    ImGui::SliderFloat3("Diffuse ", (float*)&currentLight.diffuse, 0.0, 1.0);
-                    ImGui::SliderFloat3("Specular", (float*)&currentLight.specular, 0.0, 1.0);
-                    ImGui::TreePop();
-                }
-            }
-        }
-        if (ImGui::CollapsingHeader("Directional Light")) {
-            ImGui::SliderFloat3("Direction", (float*)&dirLight.direction, -1.0, 1.0);
-            ImGui::SliderFloat3("Ambient",(float*) &dirLight.ambient, 0.0, 1.0);
-            ImGui::SliderFloat3("Diffuse ", (float*)&dirLight.diffuse, 0.0, 1.0);
-            ImGui::SliderFloat3("Specular", (float*)&dirLight.specular, 0.0, 1.0);
-        }
-        if (ImGui::CollapsingHeader("Plane Info")) {
-            ImGui::SliderFloat3("Point", (float*)&plane.point, -50.0, 50.0);
-            ImGui::SliderFloat3("Normal", (float*)&plane.normal, -1.0, 1.0);
-            ImGui::SliderFloat3("Albedo", (float*)&plane.albedo, 0.0, 1.0);
-            ImGui::SliderFloat3("Specular", (float*)&plane.specular, 0.0, 1.0);
-        }
-        if (ImGui::CollapsingHeader("Camera Info")) {
-            ImGui::SliderFloat3("Front", (float*)&camera.Front, -1.0, 1.0);
-            ImGui::SliderFloat3("Position", (float*)&camera.Position, -100.0, 100.0);
-            ImGui::SliderFloat3("Up", (float*)&camera.Up, -100.0, 100.0);
-
-            ImGui::SliderInt("Num of Reflections", (int*)&numReflections, 1, 10);
-            ImGui::SliderInt("Shininess", (int*)&shininess, 5, 100);
-        }
-        ImGui::End();
-
         renderPipeline.use();
 
         glActiveTexture(GL_TEXTURE0);
@@ -197,9 +123,67 @@ void ComputeEngine::run() {
         glBindVertexArray(quadBuffer.VAO);
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
-        ImGui::Render();
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        handleImGui();
 
         SDL_GL_SwapWindow(window);
     }
+}
+
+void ComputeEngine::handleImGui()
+{
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplSDL2_NewFrame();
+    ImGui::NewFrame();
+
+    ImGui::Begin("Info");
+    if (ImGui::CollapsingHeader("Spheres")) {
+        for (int i = 0; i < 15; i++) {
+            std::string name = "Sphere  " + std::to_string(i);
+            auto& currentLight = spheres[i];
+            if (ImGui::TreeNode(name.c_str())) {
+                ImGui::SliderFloat3("Position", (float*)&currentLight.origin, -50.0, 50.0);
+                ImGui::SliderFloat("Radius",(float*) &currentLight.radius, 1.0, 100.0);
+                ImGui::SliderFloat3("Albedo", (float*)&currentLight.albedo, 0.0, 1.0);
+                ImGui::SliderFloat3("Specular", (float*)&currentLight.specular, 0.0, 1.0);
+                ImGui::TreePop();
+            }
+        }
+    }
+    if (ImGui::CollapsingHeader("Lights")) {
+        for (int i = 0; i < 4; i++) {
+            std::string name = "Light  " + std::to_string(i);
+            auto& currentLight = pointLights[i];
+            if (ImGui::TreeNode(name.c_str())) {
+                ImGui::SliderFloat3("Position", (float*)&currentLight.position, -50.0, 50.0);
+                ImGui::SliderFloat3("Ambient",(float*) &currentLight.ambient, 0.0, 1.0);
+                ImGui::SliderFloat3("Diffuse ", (float*)&currentLight.diffuse, 0.0, 1.0);
+                ImGui::SliderFloat3("Specular", (float*)&currentLight.specular, 0.0, 1.0);
+                ImGui::TreePop();
+            }
+        }
+    }
+    if (ImGui::CollapsingHeader("Directional Light")) {
+        ImGui::SliderFloat3("Direction", (float*)&dirLight.direction, -1.0, 1.0);
+        ImGui::SliderFloat3("Ambient",(float*) &dirLight.ambient, 0.0, 1.0);
+        ImGui::SliderFloat3("Diffuse ", (float*)&dirLight.diffuse, 0.0, 1.0);
+        ImGui::SliderFloat3("Specular", (float*)&dirLight.specular, 0.0, 1.0);
+    }
+    if (ImGui::CollapsingHeader("Plane Info")) {
+        ImGui::SliderFloat3("Point", (float*)&plane.point, -50.0, 50.0);
+        ImGui::SliderFloat3("Normal", (float*)&plane.normal, -1.0, 1.0);
+        ImGui::SliderFloat3("Albedo", (float*)&plane.albedo, 0.0, 1.0);
+        ImGui::SliderFloat3("Specular", (float*)&plane.specular, 0.0, 1.0);
+    }
+    if (ImGui::CollapsingHeader("Camera Info")) {
+        ImGui::SliderFloat3("Front", (float*)&camera.Front, -1.0, 1.0);
+        ImGui::SliderFloat3("Position", (float*)&camera.Position, -100.0, 100.0);
+        ImGui::SliderFloat3("Up", (float*)&camera.Up, -100.0, 100.0);
+
+        ImGui::SliderInt("Num of Reflections", (int*)&numReflections, 1, 10);
+        ImGui::SliderInt("Shininess", (int*)&shininess, 5, 100);
+    }
+    ImGui::End();
+    
+    ImGui::Render();
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }

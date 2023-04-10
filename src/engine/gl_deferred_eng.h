@@ -10,6 +10,7 @@ class DeferredEngine : public GLEngine {
 public:
     void init_resources();
     void run();
+    void handleImGui();
 
     void createValues();
     float createHaltonSequence(unsigned int index, int base);
@@ -21,6 +22,8 @@ private:
     bool shouldFXAA = false;
     float stepMultiplier = 1.0f;
     std::vector<DeferredLight> lights;
+    float globalRadius = 100.0f;
+    SimpleDirectionalLight directionalLight;
 
     unsigned int deferredFBO;
     unsigned int gPosition, gNormal, gAlbedo, gReflectionPosition, gMetallic, gVelocity;
@@ -34,8 +37,10 @@ private:
     unsigned int gReflectionColor;
 
     AllocatedBuffer quadBuffer;
+
     AllocatedBuffer planeBuffer;
     unsigned int planeTexture;
+    glm::mat4 planeModel;
 
     Shader renderPipeline;
     Shader gbufferPipeline;
@@ -49,6 +54,9 @@ private:
     int jitterIndex = 0;
     glm::vec2 haltonSequences[128];
     glm::vec2 jitter;
+
+    float multiplier = 0.01;
+    ImGuizmo::OPERATION operation = ImGuizmo::OPERATION::TRANSLATE;
 
     unsigned int simpleColorFBO;
     unsigned int simpleColorTexture;

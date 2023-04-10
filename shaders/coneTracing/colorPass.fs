@@ -30,11 +30,19 @@ const float ALPHA_THRESH = 0.5;
 uniform sampler2D texture_diffuse;
 uniform sampler2D texture_normal;
 uniform sampler2D texture_metallic;
-uniform sampler2D shadowMap;
 uniform sampler3D voxelTexture;
 
-uniform float VOXEL_SIZE;
-uniform float MAX_DIST = 100.0;
+uniform sampler2DArray cascadedMap;
+layout (std140, binding = 0) uniform LightSpaceMatrices {
+    mat4 lightSpaceMatrices[16];
+};
+uniform float cascadePlaneDistances[16];
+uniform int cascadeCount;
+uniform mat4 view;
+uniform float far_plane;
+uniform bool showShadows;
+
+uniform float MAX_DIST = 20.0;
 uniform int coneToUse = -1;
 
 uniform float indirectLightMultiplier = 0.5;
@@ -43,15 +51,14 @@ uniform float specularAngleMultiplier = 0.1;
 uniform float voxelWorldSize;
 uniform int gridSize;
 uniform mat4 voxelProjection;
-uniform float someLod;
 
+uniform bool useAO;
 uniform bool noNormal;
 uniform bool noMetallicMap;
 
 uniform float shininess;
 uniform vec3 viewPos;
 
-uniform vec3 dirLightPos;
 uniform float dirLightMultiplier;
 uniform DirLight dirLight;
 uniform PointLight pointLights[NR_LIGHTS];
@@ -70,12 +77,12 @@ float coneWeights[6] = float[](0.25, 0.15, 0.15, 0.15, 0.15, 0.15);
 
 vec3 calcDirLight(DirLight light, vec3 normal, vec3 viewDir);
 vec3 calcDirLight(vec3 normal, vec3 viewDir, vec3 albedo, float roughness, float metallic, vec3 F0);
-float shadowCalculation(vec4 fragPosLightSpace, vec3 normal, vec3 lightDir);
+float cascadedShadowCalculation(vec3 fragPosWorldSpace, vec3 lightDir);
 
 vec3 calcPointLight(PointLight light, vec3 position, vec3 normal, vec3 viewDir);
 
-vec3 calcIndirectLighting(vec3 albedo, vec3 normal, vec3 tangent, float metallic);
-vec3 coneTrace(vec3 direction, float aperture);
+vec4 calcIndirectLighting(vec3 albedo, vec3 normal, vec3 tangent, float metallic);
+vec4 coneTrace(vec3 direction, float aperture);
 vec4 sampleVoxels(vec3 worldPosition, float lod);
 
 float DistributionGGX(vec3 N, vec3 H, float roughness) {
@@ -141,16 +148,18 @@ void main() {
     F0 = mix(F0, albedo, metallic);
 
     vec3 totalColor = dirLightMultiplier * calcDirLight(normal, viewDir, albedo, roughness, metallic, F0);
+    // totalColor = dirLightMultiplier * calcDirLight(dirLight, normal, viewDir);
     for (int i = 0; i < 0; i++) {
         totalColor += calcPointLight(pointLights[i], FragPos, normal, viewDir);
     }
-    totalColor += indirectLightMultiplier * calcIndirectLighting(albedo, normal, tangent, metallic);
+    vec4 indirectColor = calcIndirectLighting(albedo, normal, tangent, metallic);
+    totalColor = (totalColor + indirectColor.xyz * indirectLightMultiplier) * indirectColor.a;
     
     FragColor = vec4(totalColor, 1.0);
 }
 
-vec3 calcIndirectLighting(vec3 albedo, vec3 normal, vec3 tangent, float metallic) {
-    vec3 color = vec3(0.0);
+vec4 calcIndirectLighting(vec3 albedo, vec3 normal, vec3 tangent, float metallic) {
+    vec4 difuseTraceColor = vec4(0.0);
 
     vec3 bitangent = normalize(cross(tangent, normal));
 
@@ -158,10 +167,10 @@ vec3 calcIndirectLighting(vec3 albedo, vec3 normal, vec3 tangent, float metallic
 
     if (coneToUse == -1) {
         for (int i = 0; i < NUM_CONES; i++) {
-            color += coneWeights[i] * coneTrace(newTNB * coneDirections[i], 0.577);
+            difuseTraceColor += coneWeights[i] * coneTrace(newTNB * coneDirections[i], 0.577);
         }
     } else {
-        color = coneTrace(newTNB * coneDirections[coneToUse], 0.577);
+        difuseTraceColor = coneTrace(newTNB * coneDirections[coneToUse], 0.577);
     }
 
     // Calculate specular indirect
@@ -170,22 +179,25 @@ vec3 calcIndirectLighting(vec3 albedo, vec3 normal, vec3 tangent, float metallic
     reflectDir = normalize(reflectDir);
 
     float specHalfAngle = clamp(tan(HALF_PI * specularAngleMultiplier), 0.0174533f, PI);
-    vec3 specularTraceColor = metallic * coneTrace(reflectDir, specHalfAngle);
+    vec4 specularTraceColor = metallic * coneTrace(reflectDir, specHalfAngle);
 
-    return (color + specularTraceColor) * albedo;
+    vec3 totalColor = (difuseTraceColor.xyz + specularTraceColor.xyz) * albedo;
+    
+    float finalAO = useAO ? 1.0f - difuseTraceColor.a : 1.0f;
+    return vec4(totalColor, finalAO);
 }
 
-vec3 coneTrace(vec3 direction, float tanHalfAngle) {
+vec4 coneTrace(vec3 direction, float tanHalfAngle) {
     direction = normalize(direction);
 
-    vec3 totalColor = vec3(0.0);
-    float alpha = 0.0;
+    vec4 coneSample = vec4(0.0);
+    float occlusion = 0.0f;
 
     float dist = voxelWorldSize;
 
     vec3 startPos = FragPos + Normal * voxelWorldSize;
 
-    while (dist < MAX_DIST && alpha < ALPHA_THRESH) {
+    while (dist < MAX_DIST && coneSample.a < ALPHA_THRESH) {
         float diameter = 2 * dist * tanHalfAngle;
         float mipLevel = log2(diameter / voxelWorldSize);
 
@@ -193,16 +205,17 @@ vec3 coneTrace(vec3 direction, float tanHalfAngle) {
         vec4 voxelColor = sampleVoxels(position, mipLevel);
 
         if (voxelColor.a > 0.0) {
-            float a = 1.0 - alpha;
-            totalColor += a * voxelColor.rgb;
-            alpha += a * voxelColor.a;
+            float a = 1.0 - coneSample.a;
+            coneSample += a * voxelColor;
         }
 
-        // occlusion += (a * voxelColor.a) / (1.0 + 0.03 * diameter);
+        if (occlusion < 1.0)
+            occlusion += ((1.0f - occlusion) * voxelColor.a) / (1.0 + 0.03 * diameter);
+
         dist += diameter * 0.5;
     }
 
-    return totalColor;
+    return vec4(coneSample.rgb, occlusion);
 }
 
 vec4 sampleVoxels(vec3 worldPosition, float lod) {
@@ -210,7 +223,9 @@ vec4 sampleVoxels(vec3 worldPosition, float lod) {
     vec3 voxelTextureUV = convertedPos.xyz;
     voxelTextureUV = voxelTextureUV * 0.5 + 0.5;
 
-    return textureLod(voxelTexture, voxelTextureUV, lod);
+    vec4 value = textureLod(voxelTexture, voxelTextureUV, lod);
+
+    return value;
 }
 
 vec3 calcPointLight(PointLight light, vec3 position, vec3 normal, vec3 viewDir) {
@@ -244,12 +259,12 @@ vec3 calcDirLight(DirLight light, vec3 normal, vec3 viewDir) {
     vec3 specular = spec * light.color * materialColor;
     vec3 diffuse = diff * light.color * materialColor;
 
-    float shadow = shadowCalculation(FragPosLightSpace, normal, normalize(dirLightPos - FragPos));
+    float shadow = cascadedShadowCalculation(FragPos, lightDir);
     return ambient + (1.0 - shadow) * (specular + diffuse);
 }
 
 vec3 calcDirLight(vec3 normal, vec3 viewDir, vec3 albedo, float roughness, float metallic, vec3 F0) {
-    vec3 lightDir = normalize(-dirLight.direction);
+    vec3 lightDir = normalize(dirLight.direction);
     vec3 halfwayDir = normalize(lightDir + viewDir);
 
     float nDotL = max(dot(normal, lightDir), 0.0);
@@ -269,30 +284,49 @@ vec3 calcDirLight(vec3 normal, vec3 viewDir, vec3 albedo, float roughness, float
     float denominator = 4.0 * nDotV * nDotL;
     vec3 specular = numerator / max(denominator, 0.000001);
 
-    float visibility = shadowCalculation(FragPosLightSpace, normal, normalize(dirLightPos - FragPos));
+    float visibility = showShadows ? cascadedShadowCalculation(FragPos, dirLight.direction) : 0.0;
 
     vec3 radiance = (kD * albedo / PI + specular) * radianceIn * nDotL;
     return radiance * (1.0 - visibility);
 }
 
-float shadowCalculation(vec4 fragPosLightSpace, vec3 normal, vec3 lightDir) {
-    vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
-    projCoords = projCoords * 0.5 + 0.5;
+float cascadedShadowCalculation(vec3 fragPosWorldSpace, vec3 lightDir) {
+    vec4 viewSpace = view * vec4(fragPosWorldSpace, 1.0);
+    float depthValue = abs(viewSpace.z);
 
-    float closestDepth = texture(shadowMap, projCoords.xy).r;
-    float currentDepth = projCoords.z;
-
-    float bias = max(0.05 * (1.0 - dot(normal, lightDir)), 0.005);
-
-    float shadow = 0.0;
-    vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
-    for (int x = -2; x <= 2; x++) {
-        for (int y = -2; y <= 2; y++) {
-            float pcfDepth = texture(shadowMap, projCoords.xy + vec2(x, y) * texelSize).r;
-            shadow += currentDepth - bias > pcfDepth ? 1.0 : 0.0;
+    int layer = -1;
+    for (int i = 0; i < cascadeCount; i++) {
+        if (depthValue < cascadePlaneDistances[i]) {
+            layer = i;
+            break;
         }
     }
-    shadow /= 25.0;
+    if (layer == -1) layer = cascadeCount;
+
+    vec4 lightSpacePos = lightSpaceMatrices[layer] * vec4(fragPosWorldSpace, 1.0);
+
+    vec3 projCoords = lightSpacePos.xyz / lightSpacePos.w;
+    projCoords = projCoords * 0.5 + 0.5;
+
+    float currentDepth = projCoords.z;
+    if (currentDepth > 1.0) return 0.0;
+
+    vec3 normal = normalize(Normal);
+    float bias = max(0.05 * (1.0 - dot(normal, lightDir)), 0.005);
+
+    if (layer == cascadeCount) bias *= 1 / (far_plane / 0.5);
+    else bias *= 1 / (cascadePlaneDistances[layer] * 0.5);
+
+    float shadow = 0.0;
+    vec2 texelSize = 1.0 / vec2(textureSize(cascadedMap, 0));
+
+    for (int x = -1; x <= 1; x++) {
+        for (int y = -1; y <= 1; y++) {
+            float pcfDepth = texture(cascadedMap, vec3(projCoords.xy + vec2(x, y) * texelSize, layer)).r;
+            shadow += (currentDepth - bias) > pcfDepth ? 1.0 : 0.0;
+        }
+    }
+    shadow /= 9.0;
 
     if (projCoords.z > 1.0) shadow = 0.0;
 

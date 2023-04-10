@@ -11,10 +11,18 @@
 #include "utils/gl_model.h"
 #include "utils/gl_funcs.h"
 
+#include "imgui/imgui.h"
+#include "imgui/imgui_impl_opengl3.h"
+#include "imgui/imgui_impl_sdl.h"
+#include "imgui/imgui_stdlib.h"
+#include "ImGuizmo.h"
+
 struct EnviornmentCubemap {
     AllocatedBuffer buffer;
     unsigned int texture;
     Shader pipeline;
+
+    EnviornmentCubemap() {}
 
     EnviornmentCubemap(std::string path) {
         pipeline = Shader("cubemap/map.vs", "cubemap/map.fs");
@@ -24,10 +32,11 @@ struct EnviornmentCubemap {
     }
 
     void draw(glm::mat4 &projection, glm::mat4 &view) {
+        glm::mat4 convertedView = glm::mat4(glm::mat3(view));
         glDepthFunc(GL_LEQUAL);
             pipeline.use();
             pipeline.setMat4("projection", projection);
-            pipeline.setMat4("view", view);
+            pipeline.setMat4("view", convertedView);
 
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_CUBE_MAP, texture);
@@ -57,6 +66,7 @@ class GLEngine {
         void init();
         virtual void init_resources();
         virtual void run();
+        void handleImGui();
         void cleanup();
     
     protected:
@@ -77,6 +87,8 @@ class GLEngine {
         std::vector<Model> importedObjs;
         std::vector<Model> usableObjs;
         int chosenObjIndex = 0;
+        ImGuizmo::OPERATION operation = ImGuizmo::OPERATION::TRANSLATE;
+        float shininess = 200.0f;
 
         Camera camera;
         bool handleMouseMovement = true;
@@ -84,7 +96,9 @@ class GLEngine {
         float animationTime = 0.0f;
         int chosenAnimation = 0;
 
+        void handleBasicRenderLoop();
         void handleEvents();
+        void handleImportedObjs();
 
         void mouse_callback(double xpos, double ypos);
         void scroll_callback(double yoffset);

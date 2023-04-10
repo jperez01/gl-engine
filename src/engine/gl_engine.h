@@ -11,8 +11,13 @@ class RenderEngine : public GLEngine {
     public:
         void init_resources();
         void run();
+        void handleImGui();
     
     private:
+        ImGuizmo::OPERATION operation = ImGuizmo::OPERATION::TRANSLATE;
+        std::string path;
+
+        float startTime;
         AllocatedBuffer planeBuffer;
         unsigned int planeTexture;
 

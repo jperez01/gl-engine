@@ -48,8 +48,8 @@ uniform float multiplier;
 uniform mat4 view;
 uniform mat4 projection;
 
-uniform sampler2D texture_diffuse1;
-uniform sampler2D texture_specular1;
+uniform sampler2D texture_diffuse;
+uniform sampler2D texture_specular;
 
 vec3 colors[8] = vec3[](
    vec3(0, 0, 0),    vec3( 0,  0,  1), vec3( 0, 1, 0),  vec3(0, 1,  1),
@@ -73,7 +73,7 @@ vec3 calcPointLight(uint index, vec3 position, vec3 normal, vec3 viewDir, vec3 d
     float spec = pow(max(dot(normal, halfwayDir), 0.0), 100);
 
     vec3 ambient = light.color.xyz * diffColor;
-    vec3 specular = spec * light.color.xyz * texture(texture_specular1, TexCoords).rgb;
+    vec3 specular = spec * light.color.xyz * texture(texture_specular, TexCoords).rgb;
     vec3 diffuse = nDotL * light.color.xyz * diffColor;
 
     return multiplier * (specular + diffuse);
@@ -90,8 +90,8 @@ void main()
 {             
     // retrieve data from gbuffer
     vec3 normal = normalize(Normal);
-    vec3 Diffuse = texture(texture_diffuse1, TexCoords).rgb;
-    float Specular = texture(texture_specular1, TexCoords).a;
+    vec3 Diffuse = texture(texture_diffuse, TexCoords).rgb;
+    float Specular = texture(texture_specular, TexCoords).a;
     vec3 viewDir = normalize(viewPos - FragPos);
 
     uint zTile = uint(max(log(linearDepth(gl_FragCoord.z)) * scale + bias, 0.0));

@@ -15,9 +15,9 @@ void ClusteredEngine::init_resources() {
 
     tileCreateCompute = ComputeShader("clustered/tileCreate.comp");
     clusterLightCompute = ComputeShader("clustered/clusterLights.comp");
-    renderPipeline = Shader("../../shaders/clustered/lighting.vs", "../../shaders/clustered/pbr.fs");
-    gBufferPipeline = Shader("../../shaders/deferred/gbuffer.vs", "../../shaders/deferred/gbuffer.fs");
-    lightBoxPipeline = Shader("../../shaders/deferred/lightBox.vs", "../../shaders/deferred/lightBox.fs");
+    renderPipeline = Shader("clustered/lighting.vs", "clustered/pbr.fs");
+    gBufferPipeline = Shader("deferred/gbuffer.vs", "deferred/gbuffer.fs");
+    lightBoxPipeline = Shader("deferred/lightBox.vs", "deferred/lightBox.fs");
 
     Model newModel("../../resources/objects/sponzaBasic/glTF/Sponza.gltf", GLTF);
     loadModelData(newModel);
@@ -113,46 +113,8 @@ void ClusteredEngine::init_SSBOs() {
 }
 
 void ClusteredEngine::run() {
-    int shininess = 10;
-    float lightMultiplier = 10.0f;
-    float multiplier = 0.01f;
-    bool shouldUseFragFunction = false;
-    ImGuizmo::OPERATION operation = ImGuizmo::OPERATION::TRANSLATE;
-
     while(!closedWindow) {
-        ImGuiIO& io = ImGui::GetIO(); (void)io;
-        float currentFrame = static_cast<float>(SDL_GetTicks());
-        deltaTime = currentFrame - lastFrame;
-        deltaTime *= multiplier;
-        lastFrame = currentFrame;
-
-        handleEvents();
-        
-        if (importedObjs.size() != 0) {
-            Model model = importedObjs[0];
-            loadModelData(model);
-
-            importedObjs.pop_back();
-            usableObjs.push_back(model);
-        }
-
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplSDL2_NewFrame();
-        ImGui::NewFrame();
-        ImGuizmo::BeginFrame();
-
-        ImGui::Begin("Info");
-        if (ImGui::CollapsingHeader("Scene Info")) {
-            ImGui::SliderFloat("Bias", &bias, 0.01f, 1.0f);
-            ImGui::SliderFloat("Scale", &scale, 0.5f, 10.0f);
-            ImGui::SliderFloat("Multiplier ", &lightMultiplier, 1.0f, 100.0f);
-            ImGui::Checkbox("Should use Frag Function", &shouldUseFragFunction);
-        }
-        if (ImGui::CollapsingHeader("Directional Light Info")) {
-            ImGui::SliderFloat3("Direction", (float*)&directionalLight.direction, -1.0f, 1.0f);
-            ImGui::SliderFloat3("Color", (float*)&directionalLight.diffuse, 0.0f, 1.0f);
-        }
-        ImGui::End();
+        handleBasicRenderLoop();
 
         glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)WINDOW_WIDTH/ (float)WINDOW_HEIGHT, 0.1f, 100.0f);
         glm::mat4 view = camera.getViewMatrix();
@@ -215,10 +177,32 @@ void ClusteredEngine::run() {
             glBindVertexArray(cubeBuffer.VAO);
             glDrawArrays(GL_TRIANGLES, 0, 36);
         }
-
-        ImGui::Render();
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        handleImGui();
 
         SDL_GL_SwapWindow(window);
     }
+}
+
+void ClusteredEngine::handleImGui()
+{
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplSDL2_NewFrame();
+    ImGui::NewFrame();
+    ImGuizmo::BeginFrame();
+
+    ImGui::Begin("Info");
+    if (ImGui::CollapsingHeader("Scene Info")) {
+        ImGui::SliderFloat("Bias", &bias, 0.01f, 1.0f);
+        ImGui::SliderFloat("Scale", &scale, 0.5f, 10.0f);
+        ImGui::SliderFloat("Multiplier ", &lightMultiplier, 1.0f, 100.0f);
+        ImGui::Checkbox("Should use Frag Function", &shouldUseFragFunction);
+    }
+    if (ImGui::CollapsingHeader("Directional Light Info")) {
+        ImGui::SliderFloat3("Direction", (float*)&directionalLight.direction, -1.0f, 1.0f);
+        ImGui::SliderFloat3("Color", (float*)&directionalLight.diffuse, 0.0f, 1.0f);
+    }
+    ImGui::End();
+
+    ImGui::Render();
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }

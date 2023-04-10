@@ -1,11 +1,4 @@
 #include "gl_pbr_engine.h"
-#include "utils/gl_funcs.h"
-
-#include "imgui/imgui.h"
-#include "imgui/imgui_impl_opengl3.h"
-#include "imgui/imgui_impl_sdl.h"
-#include "imgui/imgui_stdlib.h"
-#include "ImGuizmo.h"
 
 void PBREngine::init_resources() {
     camera = Camera(glm::vec3(0.0f, 0.0f, 10.0f));
@@ -254,7 +247,6 @@ void PBREngine::createPrefilter() {
 
 void PBREngine::run() {
     SDL_Event event;
-    bool switchValues = false;
 
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
@@ -263,13 +255,7 @@ void PBREngine::run() {
     createIrradianceMap();
 
     while (!closedWindow) {
-        ImGuiIO& io = ImGui::GetIO(); (void)io;
-        float currentFrame = static_cast<float>(SDL_GetTicks());
-        deltaTime = currentFrame - lastFrame;
-        deltaTime *= 0.01;
-        lastFrame = currentFrame;
-
-        handleEvents();
+        handleBasicRenderLoop();
 
         glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -279,21 +265,6 @@ void PBREngine::run() {
         pipeline.setVec3("albedo", glm::vec3(0.5f, 0.0f, 0.0f));
         pipeline.setFloat("ao", 1.0f);
 
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplSDL2_NewFrame();
-        ImGui::NewFrame();
-        ImGuizmo::BeginFrame();
-
-        ImGui::Begin("Info");
-        if (ImGui::CollapsingHeader("Scene Info")) {
-            ImGui::SliderFloat3("Light Direction", (float*)&directionLight.direction, -1.0f, 1.0f);
-            ImGui::SliderFloat3("Dir Light Color", (float*)&directionLight.diffuse, 0.0f, 1.0f);
-            if(ImGui::RadioButton("Switch Roughness and Metallic", switchValues)) {
-                switchValues = !switchValues;
-            }
-        }
-        ImGui::End();
-        
         glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)WINDOW_WIDTH / (float)WINDOW_HEIGHT, 0.1f, 100.0f);
         glm::mat4 view = camera.getViewMatrix();
 
@@ -389,9 +360,7 @@ void PBREngine::run() {
         glBindVertexArray(cubemapBuffer.VAO);
         glDrawArrays(GL_TRIANGLES, 0, 36);
 
-        ImGui::Render();
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-
+        handleImGui();
         SDL_GL_SwapWindow(window);
     }
 }
@@ -442,60 +411,29 @@ void PBREngine::handleEvents() {
     }
 }
 
-void PBREngine::drawModels(Shader& shader, bool skipTextures) {
-    shader.setBool("isModel", true);
-    glm::mat4 otherModel = glm::mat4(1.0f);
-    otherModel = glm::scale(otherModel, glm::vec3(0.10f));
-    for (Model& model : usableObjs) {
-        shader.setMat4("model", otherModel);
+void PBREngine::handleImGui(){
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplSDL2_NewFrame();
+    ImGui::NewFrame();
+    ImGuizmo::BeginFrame();
 
-        for (int j = 0; j < model.meshes.size(); j++) {
-            Mesh& mesh = model.meshes[j];
-            if (!skipTextures) {
-                unsigned int diffuseNr = 1;
-                unsigned int specularNr = 1;
-                unsigned int normalNr = 1;
-                unsigned int heightNr = 1;
-                unsigned int roughnessNr = 1;
-
-                for (unsigned int i = 0; i < mesh.textures.size(); i++) {
-                    glActiveTexture(GL_TEXTURE3 + i);
-
-                    string number;
-                    string name = mesh.textures[i].type;
-                    
-                    if (name == "texture_diffuse")
-                        number = std::to_string(diffuseNr++);
-                    else if (name == "texture_specular")
-                        number = std::to_string(specularNr++);
-                    else if (name == "texture_normal")
-                        number = std::to_string(normalNr++);
-                    else if (name == "texture_height")
-                        number = std::to_string(heightNr++);
-
-                    string key = name;
-                    shader.setInt(key.c_str(), i + 3);
-
-                    glBindTexture(GL_TEXTURE_2D, mesh.textures[i].id);
-                }
-                glActiveTexture(GL_TEXTURE0);
-
-                if (mesh.bone_data.size() != 0) {
-                    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, mesh.SSBO);
-
-                    mesh.getBoneTransforms(animationTime, model.scene, model.nodes, chosenAnimation);
-                    std::string boneString = "boneMatrices[";
-                    for (unsigned int i = 0; i < mesh.bone_info.size(); i++) {
-                        shader.setMat4(boneString + std::to_string(i) + "]", 
-                            mesh.bone_info[i].finalTransform);
-                    }
-                }
-            }
-
-            glBindVertexArray(mesh.buffer.VAO);
-            glDrawElements(GL_TRIANGLES, mesh.indices.size(), GL_UNSIGNED_INT, 0);
-            glBindVertexArray(0);
+    ImGui::Begin("Info");
+    if (ImGui::CollapsingHeader("Scene Info")) {
+        ImGui::SliderFloat3("Light Direction", (float*)&directionLight.direction, -1.0f, 1.0f);
+        ImGui::SliderFloat3("Dir Light Color", (float*)&directionLight.diffuse, 0.0f, 1.0f);
+        if(ImGui::RadioButton("Switch Roughness and Metallic", switchValues)) {
+            switchValues = !switchValues;
         }
     }
+    ImGui::End();
+    
+    ImGui::Render();
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+}
+
+
+void PBREngine::drawModels(Shader& shader, bool skipTextures) {
+    shader.setBool("isModel", true);
+    GLEngine::drawModels(shader, skipTextures);
     shader.setBool("isModel", false);
 }

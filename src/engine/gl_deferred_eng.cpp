@@ -1,11 +1,4 @@
 #include "gl_deferred_eng.h"
-#include "utils/gl_funcs.h"
-
-#include "imgui/imgui.h"
-#include "imgui/imgui_impl_opengl3.h"
-#include "imgui/imgui_impl_sdl.h"
-#include "imgui/imgui_stdlib.h"
-#include "ImGuizmo.h"
 
 #include "glm/gtx/string_cast.hpp"
 #include <random>
@@ -13,13 +6,13 @@
 void DeferredEngine::init_resources() {
     camera = Camera(glm::vec3(0.0f, 0.0f, 5.0f));
 
-    renderPipeline = Shader("../../shaders/deferred/lighting.vs", "../../shaders/ssr/finalPassF.glsl");
-    gbufferPipeline = Shader("../../shaders/aliasing/taa/taaGbuffer.vs", "../../shaders/aliasing/taa/taaGbuffer.fs");
-    fxaaPipeline = Shader("../../shaders/deferred/lighting.vs", "../../shaders/aliasing/fxaa.fs");
-    ssrPipeline = Shader("../../shaders/deferred/lighting.vs", "../../shaders/ssr/ssrF.glsl");
+    renderPipeline = Shader("deferred/lighting.vs", "ssr/finalPassF.glsl");
+    gbufferPipeline = Shader("aliasing/taa/taaGbuffer.vs", "aliasing/taa/taaGbuffer.fs");
+    fxaaPipeline = Shader("deferred/lighting.vs", "aliasing/fxaa.fs");
+    ssrPipeline = Shader("deferred/lighting.vs", "ssr/ssrF.glsl");
 
-    taaResolvePipeline = Shader("../../shaders/deferred/lighting.vs", "../../shaders/aliasing/taa/taaResolve.fs");
-    taaHistoryPipeline = Shader("../../shaders/deferred/lighting.vs", "../../shaders/aliasing/taa/taaHistory.fs");
+    taaResolvePipeline = Shader("deferred/lighting.vs", "aliasing/taa/taaResolve.fs");
+    taaHistoryPipeline = Shader("deferred/lighting.vs", "aliasing/taa/taaHistory.fs");
 
     inverseScreenSize = glm::vec2(1.0 / WINDOW_WIDTH, 1.0 / WINDOW_HEIGHT);
    for (int i = 0; i < 128; i++) {
@@ -34,6 +27,7 @@ void DeferredEngine::init_resources() {
 
     planeBuffer = glutil::createPlane();
     planeTexture = glutil::loadTexture("../../resources/textures/wood.png");
+    planeModel = glm::mat4(1.0f);
 
     std::random_device rd;
     std::mt19937 mt(rd());
@@ -48,6 +42,8 @@ void DeferredEngine::init_resources() {
 
         lights.push_back(light);
     }
+    directionalLight.direction = glm::vec3(0.0f, 1.0f, 0.0f);
+    directionalLight.color = glm::vec3(1.0f, 1.0f, 1.0f);
 
     glCreateFramebuffers(1, &deferredFBO);
     glBindFramebuffer(GL_FRAMEBUFFER, deferredFBO);
@@ -123,73 +119,12 @@ void DeferredEngine::init_resources() {
 
 
 void DeferredEngine::run() {
-    int shininess = 10;
-    float multiplier = 0.01;
-    glm::mat4 planeModel = glm::mat4(1.0f);
     planeModel = glm::translate(planeModel, glm::vec3(0.0, 0.0, 0.0));
     planeModel = glm::scale(planeModel, glm::vec3(1.0f, 1.5f, 1.0f));
-    float globalRadius = 100.0f;
-
-    glm::vec3 direction(0.0f, 1.0f, 0.0f);
-    glm::vec3 color(1.0f, 1.0f, 1.0f);
-
-    ImGuizmo::OPERATION operation = ImGuizmo::OPERATION::TRANSLATE;
 
     while (!closedWindow) {
-        ImGuiIO& io = ImGui::GetIO(); (void)io;
-        float currentFrame = static_cast<float>(SDL_GetTicks());
-        deltaTime = currentFrame - lastFrame;
-        deltaTime *= multiplier;
-        lastFrame = currentFrame;
+        handleBasicRenderLoop();
 
-        handleEvents();
-        
-        if (importedObjs.size() != 0) {
-            Model model = importedObjs[0];
-            loadModelData(model);
-
-            importedObjs.pop_back();
-            usableObjs.push_back(model);
-        }
-
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplSDL2_NewFrame();
-        ImGui::NewFrame();
-        ImGuizmo::BeginFrame();
-
-        ImGui::Begin("Info");
-        if (ImGui::CollapsingHeader("Lights")) {
-            for (int i = 0; i < 32; i++) {
-                std::string name = "Light  " + std::to_string(i);
-                auto& currentLight = lights[i];
-                if (ImGui::TreeNode(name.c_str())) {
-                    ImGui::SliderFloat3("Position", (float*)&currentLight.position, -2.0, 2.0);
-                    ImGui::SliderFloat3("Color",(float*) &currentLight.color, 0.0, 1.0);
-                    ImGui::TreePop();
-                }
-            }
-        }
-        if (ImGui::CollapsingHeader("Scene Info")) {
-            ImGui::SliderFloat3("Light Direction", (float*)&direction, -1.0f, 1.0f);
-            ImGui::SliderFloat3("Dir Light Color", (float*)&color, 0.0f, 1.0f);
-
-            ImGui::SliderFloat("Camera Multiplier", &multiplier, 0.00001f, 0.01f);
-            ImGui::SliderFloat("Global Radius ", &globalRadius, 1.0f, 10000.0f);
-            ImGui::SliderFloat("Step Multiplier", &stepMultiplier, 0.5f, 10.0f);
-
-            ImGui::Checkbox("Use FXAA", &shouldFXAA);
-
-            if(ImGui::RadioButton("Translate", operation == ImGuizmo::TRANSLATE)) {
-                operation = ImGuizmo::TRANSLATE;
-            }
-            if(ImGui::RadioButton("Rotate", operation == ImGuizmo::ROTATE)) {
-                operation = ImGuizmo::ROTATE;
-            }
-            if(ImGui::RadioButton("Scale", operation == ImGuizmo::SCALE)) {
-                operation = ImGuizmo::SCALE;
-            }
-        }
-        ImGui::End();
         jitterIndex = jitterIndex % 128;
         jitter = haltonSequences[jitterIndex] * inverseScreenSize;
         jitterIndex++;
@@ -197,11 +132,6 @@ void DeferredEngine::run() {
         glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)WINDOW_WIDTH/ (float)WINDOW_HEIGHT, 0.1f, 100.0f);
         glm::mat4 view = camera.getViewMatrix();
         glm::mat4 model = glm::mat4(1.0f);
-
-        ImGuizmo::SetOrthographic(false);
-        ImGuizmo::SetRect(0, 0, io.DisplaySize.x, io.DisplaySize.y);
-        ImGuizmo::Manipulate(glm::value_ptr(view), glm::value_ptr(projection), operation,
-            ImGuizmo::LOCAL, glm::value_ptr(planeModel));
 
         glBindFramebuffer(GL_FRAMEBUFFER, deferredFBO);
             glClearColor(0.0, 0.0, 0.0, 1.0);
@@ -274,8 +204,8 @@ void DeferredEngine::run() {
             renderPipeline.setInt("gAlbedoSpec", 2);
             renderPipeline.setInt("gReflectionColor", 3);
 
-            renderPipeline.setVec3("directionalLight.direction", direction);
-            renderPipeline.setVec3("directionalLight.color", color);
+            renderPipeline.setVec3("directionalLight.direction", directionalLight.direction);
+            renderPipeline.setVec3("directionalLight.color", directionalLight.color);
 
             for (unsigned int i = 0; i < lights.size(); i++) {
                 std::string name = "lights[" + std::to_string(i) + "].";
@@ -300,14 +230,7 @@ void DeferredEngine::run() {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
         if (shouldFXAA) {
-            fxaaPipeline.use();
-            glBindTextureUnit(0, colorTexture);
-
-            fxaaPipeline.setVec2("inverseScreenSize", inverseScreenSize);
-            fxaaPipeline.setInt("screenTexture", 0);
-            fxaaPipeline.setFloat("multiplier", stepMultiplier);
-            glBindVertexArray(quadBuffer.VAO);
-            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+            renderFXAA();
         } else {
             renderTAA();
         }
@@ -327,6 +250,56 @@ void DeferredEngine::run() {
     }
 }
 
+void DeferredEngine::handleImGui() {
+    ImGuiIO& io = ImGui::GetIO(); (void)io;
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplSDL2_NewFrame();
+    ImGui::NewFrame();
+    ImGuizmo::BeginFrame();
+
+    ImGui::Begin("Info");
+    if (ImGui::CollapsingHeader("Lights")) {
+        for (int i = 0; i < 32; i++) {
+            std::string name = "Light  " + std::to_string(i);
+            auto& currentLight = lights[i];
+            if (ImGui::TreeNode(name.c_str())) {
+                ImGui::SliderFloat3("Position", (float*)&currentLight.position, -2.0, 2.0);
+                ImGui::SliderFloat3("Color",(float*) &currentLight.color, 0.0, 1.0);
+                ImGui::TreePop();
+            }
+        }
+    }
+    if (ImGui::CollapsingHeader("Scene Info")) {
+        ImGui::SliderFloat3("Light Direction", (float*)&directionalLight.direction, -1.0f, 1.0f);
+        ImGui::SliderFloat3("Dir Light Color", (float*)&directionalLight.color, 0.0f, 1.0f);
+
+        ImGui::SliderFloat("Camera Multiplier", &multiplier, 0.00001f, 0.01f);
+        ImGui::SliderFloat("Global Radius ", &globalRadius, 1.0f, 10000.0f);
+        ImGui::SliderFloat("Step Multiplier", &stepMultiplier, 0.5f, 10.0f);
+
+        ImGui::Checkbox("Use FXAA", &shouldFXAA);
+
+        if(ImGui::RadioButton("Translate", operation == ImGuizmo::TRANSLATE)) {
+            operation = ImGuizmo::TRANSLATE;
+        }
+        if(ImGui::RadioButton("Rotate", operation == ImGuizmo::ROTATE)) {
+            operation = ImGuizmo::ROTATE;
+        }
+        if(ImGui::RadioButton("Scale", operation == ImGuizmo::SCALE)) {
+            operation = ImGuizmo::SCALE;
+        }
+    }
+    ImGui::End();
+
+    glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)WINDOW_WIDTH/ (float)WINDOW_HEIGHT, 0.1f, 100.0f);
+    glm::mat4 view = camera.getViewMatrix();
+
+    ImGuizmo::SetOrthographic(false);
+    ImGuizmo::SetRect(0, 0, io.DisplaySize.x, io.DisplaySize.y);
+    ImGuizmo::Manipulate(glm::value_ptr(view), glm::value_ptr(projection), operation,
+        ImGuizmo::LOCAL, glm::value_ptr(planeModel));
+}
+
 float DeferredEngine::createHaltonSequence(unsigned int index, int base) {
     float f = 1;
     float r = 0;
@@ -341,7 +314,14 @@ float DeferredEngine::createHaltonSequence(unsigned int index, int base) {
 }
 
 void DeferredEngine::renderFXAA() {
+    fxaaPipeline.use();
+    glBindTextureUnit(0, colorTexture);
 
+    fxaaPipeline.setVec2("inverseScreenSize", inverseScreenSize);
+    fxaaPipeline.setInt("screenTexture", 0);
+    fxaaPipeline.setFloat("multiplier", stepMultiplier);
+    glBindVertexArray(quadBuffer.VAO);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 }
 
 void DeferredEngine::renderTAA() {

@@ -1,48 +1,37 @@
 add_library(gl_tools
-    engine/gl_engine.h
-    engine/gl_engine.cpp
-    engine/gl_base_engine.h
     engine/gl_base_engine.cpp
-    engine/gl_compute_eng.h
-    engine/gl_compute_eng.cpp
-    engine/gl_deferred_eng.h
-    engine/gl_deferred_eng.cpp
-    engine/gl_pbr_engine.h
-    engine/gl_pbr_engine.cpp
-    engine/gl_clustered_engine.h
-    engine/gl_clustered_engine.cpp
-    engine/gl_voxel_eng.cpp
+    engine/gl_physics.cpp
 
-    utils/gl_funcs.h
     utils/gl_funcs.cpp
-    utils/camera.h
     utils/camera.cpp
-    utils/gl_model.h
     utils/gl_model.cpp
-    utils/shader.h
     utils/shader.cpp
-    utils/gl_types.h
     utils/gl_types.cpp
-    utils/gl_compute.h
     utils/gl_compute.cpp)
 
 add_executable(gl_engine
-    main.cpp)
+    main.cpp
+    engine/gl_engine.cpp)
 
 add_executable(compute_engine
-    exes/computeDemo.cpp)
+    exes/computeDemo.cpp
+    engine/gl_compute_eng.cpp)
 
 add_executable(deferred_engine
-    exes/deferredDemo.cpp)
+    exes/deferredDemo.cpp
+    engine/gl_deferred_eng.cpp)
 
 add_executable(pbr_engine
-    exes/pbrDemo.cpp)
+    exes/pbrDemo.cpp
+    engine/gl_pbr_engine.cpp)
 
 add_executable(clustered_engine
-    exes/clusteredDemo.cpp)
+    exes/clusteredDemo.cpp
+    engine/gl_clustered_engine.cpp)
 
 add_executable(voxel_cone_tracing
-    exes/voxelDemo.cpp)
+    exes/voxelDemo.cpp
+    engine/gl_voxel_eng.cpp)
 
 target_include_directories(gl_tools PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
