@@ -3,16 +3,10 @@
 #include "glm/gtx/component_wise.hpp"
 
 void VoxelEngine::init_resources() {
-    camera = Camera(glm::vec3(0.0f, 0.0f, 7.0f));
 
     voxelGridPipeline = Shader("coneTracing/voxel.vs", "coneTracing/voxel.fs", "coneTracing/voxel.gs");
     renderPassPipeline = Shader("coneTracing/colorPass.vs", "coneTracing/colorPass.fs");
     quadPipeline = Shader("shadows/debug.vs", "shadows/debug.fs");
-
-    Model newModel("../../resources/objects/sponzaBasic/glTF/Sponza.gltf", GLTF);
-    newModel.model_matrix = glm::scale(glm::mat4(1.0f), glm::vec3(0.05f));
-    loadModelData(newModel);
-    usableObjs.push_back(newModel);
 
     voxelGridTexture = glutil::createTexture3D(gridSize, gridSize, gridSize);
     glBindImageTexture(0, voxelGridTexture, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA8);
@@ -38,12 +32,6 @@ void VoxelEngine::init_resources() {
 
         pointLights.push_back(newLight);
     }
-
-    voxelSize = 1.0f / gridSize;
-    glm::vec4 midpoint = (usableObjs[0].aabb.maxPoint + usableObjs[0].aabb.minPoint) * 0.5f;
-    glm::vec4 difference = usableObjs[0].model_matrix * (midpoint - usableObjs[0].aabb.maxPoint);
-    maxCoord = glm::compMax(glm::abs(difference)) + 1.0f;
-    voxelWorldSize = maxCoord * 2.0f / gridSize;
 
     // Create Directional Light Shadow Info
     cascadeMapPipeline = Shader("shadows/cascadeV.glsl", "shadows/map.fs", "shadows/cascadeG.glsl");
@@ -73,94 +61,84 @@ void VoxelEngine::init_resources() {
     }
 }
 
-void VoxelEngine::run() {
-    createVoxelGrid();
-
-    while (!closedWindow) {
-        handleBasicRenderLoop();
-
-        glClearColor(0.0, 0.2, 0.2, 1.0);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)WINDOW_WIDTH/ (float)WINDOW_HEIGHT, cameraNearPlane, cameraFarPlane);
-        glm::mat4 view = camera.getViewMatrix();
-
-        // Create shadowmap
-        auto lightMatrices = getLightSpaceMatrices();
-        glNamedBufferSubData(matricesUBO, 0, sizeof(glm::mat4x4) * lightMatrices.size(), lightMatrices.data());
-
-        cascadeMapPipeline.use();
-
-        glEnable(GL_CULL_FACE);
-        glEnable(GL_DEPTH_CLAMP);
-        glBindFramebuffer(GL_FRAMEBUFFER, shadowMapFBO);
-            glViewport(0, 0, depthMapResolution, depthMapResolution);
-            glClear(GL_DEPTH_BUFFER_BIT);
-
-            if (cullFront) glCullFace(GL_FRONT);
-            drawModels(cascadeMapPipeline, true);
-            glCullFace(GL_BACK);
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glDisable(GL_DEPTH_CLAMP);
-        glDisable(GL_CULL_FACE);
-
-        glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
-        // Final Render Pass
-        glActiveTexture(GL_TEXTURE7);
-        glBindTexture(GL_TEXTURE_2D_ARRAY, lightDepthMaps);
-
-        renderPassPipeline.use();
-
-        renderPassPipeline.setInt("cascadedMap", 7);
-        renderPassPipeline.setInt("cascadeCount", shadowCascadeLevels.size());
-        for (size_t i = 0; i < shadowCascadeLevels.size(); i++) {
-            renderPassPipeline.setFloat("cascadePlaneDistances[" + std::to_string(i) + "]", shadowCascadeLevels[i]);
-        }
-        renderPassPipeline.setFloat("far_plane", cameraFarPlane);
-        renderPassPipeline.setBool("showShadows", shouldShowShadowMap);
-
-        renderPassPipeline.setMat4("view", view);
-        renderPassPipeline.setMat4("projection", projection);
-        renderPassPipeline.setFloat("shininess", shininess);
-        renderPassPipeline.setVec3("viewPos", camera.Position);
-        renderPassPipeline.setBool("useAO", useAO);
-
-        renderPassPipeline.setFloat("dirLightMultiplier", dirLightMultiplier);
-        renderPassPipeline.setFloat("indirectLightMultiplier", indirectLightMultiplier);
-        renderPassPipeline.setFloat("specularAngleMultiplier", specularAngleMultiplier);
-
-        renderPassPipeline.setFloat("MAX_DIST", maxDistance);
-        renderPassPipeline.setInt("gridSize", gridSize);
-        renderPassPipeline.setFloat("voxelWorldSize", voxelWorldSize);
-        renderPassPipeline.setMat4("voxelProjection", finalVoxelProjection);
-        renderPassPipeline.setFloat("someLod", someLod);
-
-        renderPassPipeline.setVec3("dirLight.color", directionalLight.color);
-        renderPassPipeline.setVec3("dirLight.direction", directionalLight.direction);
-        for (unsigned int i = 0; i < pointLights.size(); i++) {
-            renderPassPipeline.setVec3("pointLights[" + std::to_string(i) + "].position", pointLights[i].position);
-            renderPassPipeline.setVec3("pointLights[" + std::to_string(i) + "].color", pointLights[i].color);
-        }
-        glActiveTexture(GL_TEXTURE8);
-        glBindTexture(GL_TEXTURE_3D, voxelGridTexture);
-
-        renderPassPipeline.setInt("voxelTexture", 8);
-        drawModels(renderPassPipeline);
-
-        // Render Cubemap
-        cubemap.draw(projection, view);
-
-        handleImGui();
-
-        SDL_GL_SwapWindow(window);
+void VoxelEngine::render(std::vector<Model>& objs) {
+    if (firstTime) {
+        firstTime = false;
+        createVoxelGrid(objs);
     }
+    glClearColor(0.0, 0.2, 0.2, 1.0);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    glm::mat4 projection = glm::perspective(glm::radians(camera->Zoom), (float)WINDOW_WIDTH/ (float)WINDOW_HEIGHT, cameraNearPlane, cameraFarPlane);
+    glm::mat4 view = camera->getViewMatrix();
+
+    // Create shadowmap
+    auto lightMatrices = getLightSpaceMatrices();
+    glNamedBufferSubData(matricesUBO, 0, sizeof(glm::mat4x4) * lightMatrices.size(), lightMatrices.data());
+
+    cascadeMapPipeline.use();
+
+    glEnable(GL_CULL_FACE);
+    glEnable(GL_DEPTH_CLAMP);
+    glBindFramebuffer(GL_FRAMEBUFFER, shadowMapFBO);
+        glViewport(0, 0, depthMapResolution, depthMapResolution);
+        glClear(GL_DEPTH_BUFFER_BIT);
+
+        if (cullFront) glCullFace(GL_FRONT);
+        drawModels(objs, cascadeMapPipeline, true);
+        glCullFace(GL_BACK);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glDisable(GL_DEPTH_CLAMP);
+    glDisable(GL_CULL_FACE);
+
+    glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
+    // Final Render Pass
+    glActiveTexture(GL_TEXTURE7);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, lightDepthMaps);
+
+    renderPassPipeline.use();
+
+    renderPassPipeline.setInt("cascadedMap", 7);
+    renderPassPipeline.setInt("cascadeCount", shadowCascadeLevels.size());
+    for (size_t i = 0; i < shadowCascadeLevels.size(); i++) {
+        renderPassPipeline.setFloat("cascadePlaneDistances[" + std::to_string(i) + "]", shadowCascadeLevels[i]);
+    }
+    renderPassPipeline.setFloat("far_plane", cameraFarPlane);
+    renderPassPipeline.setBool("showShadows", shouldShowShadowMap);
+
+    renderPassPipeline.setMat4("view", view);
+    renderPassPipeline.setMat4("projection", projection);
+    renderPassPipeline.setFloat("shininess", shininess);
+    renderPassPipeline.setVec3("viewPos", camera->Position);
+    renderPassPipeline.setBool("useAO", useAO);
+
+    renderPassPipeline.setFloat("dirLightMultiplier", dirLightMultiplier);
+    renderPassPipeline.setFloat("indirectLightMultiplier", indirectLightMultiplier);
+    renderPassPipeline.setFloat("specularAngleMultiplier", specularAngleMultiplier);
+
+    renderPassPipeline.setFloat("MAX_DIST", maxDistance);
+    renderPassPipeline.setInt("gridSize", gridSize);
+    renderPassPipeline.setFloat("voxelWorldSize", voxelWorldSize);
+    renderPassPipeline.setMat4("voxelProjection", finalVoxelProjection);
+    renderPassPipeline.setFloat("someLod", someLod);
+
+    renderPassPipeline.setVec3("dirLight.color", directionalLight.color);
+    renderPassPipeline.setVec3("dirLight.direction", directionalLight.direction);
+    for (unsigned int i = 0; i < pointLights.size(); i++) {
+        renderPassPipeline.setVec3("pointLights[" + std::to_string(i) + "].position", pointLights[i].position);
+        renderPassPipeline.setVec3("pointLights[" + std::to_string(i) + "].color", pointLights[i].color);
+    }
+    glActiveTexture(GL_TEXTURE8);
+    glBindTexture(GL_TEXTURE_3D, voxelGridTexture);
+
+    renderPassPipeline.setInt("voxelTexture", 8);
+    drawModels(objs, renderPassPipeline);
+
+    // Render Cubemap
+    cubemap.draw(projection, view);
 }
 
 void VoxelEngine::handleImGui() {
-    ImGui_ImplOpenGL3_NewFrame();
-    ImGui_ImplSDL2_NewFrame();
-    ImGui::NewFrame();
-
     ImGui::Begin("Info");
     if (ImGui::CollapsingHeader("Global Illumination Info")) {
         if (ImGui::SliderFloat("Voxel World Size", &voxelWorldSize, 0.1f, 2.0f)) {
@@ -181,12 +159,15 @@ void VoxelEngine::handleImGui() {
     }
     ImGui::End();
     directionalLight.direction = glm::normalize(directionalLight.direction);
-
-    ImGui::Render();
-    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
 
-void VoxelEngine::createVoxelGrid() {
+void VoxelEngine::createVoxelGrid(std::vector<Model> &objs) {
+    voxelSize = 1.0f / gridSize;
+    glm::vec4 midpoint = (objs[0].aabb.maxPoint + objs[0].aabb.minPoint) * 0.5f;
+    glm::vec4 difference = objs[0].model_matrix * (midpoint - objs[0].aabb.maxPoint);
+    maxCoord = glm::compMax(glm::abs(difference)) + 1.0f;
+    voxelWorldSize = maxCoord * 2.0f / gridSize;
+
     glm::mat4 voxelProjection = glm::ortho(-maxCoord, maxCoord, -maxCoord, maxCoord, 0.1f, 2.0f * maxCoord + 0.1f);
 
     glm::mat4 finalProjection = voxelProjection * glm::lookAt(glm::vec3(0, 0, maxCoord + 0.1f), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
@@ -216,7 +197,7 @@ void VoxelEngine::createVoxelGrid() {
         voxelGridPipeline.setInt("voxelTexture", 0);
         glBindImageTexture(0, voxelGridTexture, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA8);
 
-        drawModels(voxelGridPipeline);
+        drawModels(objs, voxelGridPipeline);
         glGenerateTextureMipmap(voxelGridTexture);
         
         
@@ -243,9 +224,9 @@ std::vector<glm::mat4> VoxelEngine::getLightSpaceMatrices() {
 
 glm::mat4 VoxelEngine::getLightSpaceMatrix(float nearPlane, float farPlane) {
     const auto proj = glm::perspective(
-        glm::radians(camera.Zoom), (float)WINDOW_WIDTH / (float)WINDOW_HEIGHT, nearPlane,
+        glm::radians(camera->Zoom), (float)WINDOW_WIDTH / (float)WINDOW_HEIGHT, nearPlane,
         farPlane);
-    auto corners = getFrustumCornerWorldSpace(proj, camera.getViewMatrix());
+    auto corners = getFrustumCornerWorldSpace(proj, camera->getViewMatrix());
 
     glm::vec3 center(0, 0, 0);
     for (const auto& v : corners) center += glm::vec3(v);

@@ -1,18 +1,12 @@
 #include "gl_pbr_engine.h"
 
 void PBREngine::init_resources() {
-    camera = Camera(glm::vec3(0.0f, 0.0f, 10.0f));
-
     pipeline = Shader("pbr/basicVertex.glsl", "pbr/basicFragment.glsl");
     convertToCubemapPipeline = Shader("pbr/cubemapVertex.glsl", "pbr/cubemapFragment.glsl");
     createIrradiancePipeline = Shader("pbr/cubemapVertex.glsl", "pbr/irradianceFragment.glsl");
     backgroundPipeline = Shader("pbr/backgroundV.glsl", "pbr/backgroundF.glsl");
     prefilterPipeline = Shader("pbr/cubemapVertex.glsl", "pbr/prefilterF.glsl");
     brdfPipeline = Shader("pbr/brdfV.glsl", "pbr/brdfF.glsl");
-
-    Model newModel("../../resources/objects/sponzaBasic/glTF/Sponza.gltf", GLTF);
-    loadModelData(newModel);
-    usableObjs.push_back(newModel);
 
     albedoMap = glutil::loadTexture("../../resources/textures/reinforced-metal/reinforced-metal_albedo.png");
     aoMap = glutil::loadTexture("../../resources/textures/reinforced-metal/reinforced-metal_ao.png");
@@ -66,6 +60,12 @@ void PBREngine::init_resources() {
     glNamedFramebufferRenderbuffer(captureFBO, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, captureRBO);
 
     glNamedRenderbufferStorage(irradianceRBO, GL_DEPTH_ATTACHMENT, 32, 32);
+
+    glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LEQUAL);
+    glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
+
+    createIrradianceMap();
 }
 
 void PBREngine::createSphere() {
@@ -242,181 +242,116 @@ void PBREngine::createIrradianceMap() {
 
 void PBREngine::createPrefilter() {
     prefilterPipeline.use();
-
 }
 
-void PBREngine::run() {
-    SDL_Event event;
+void PBREngine::render(std::vector<Model> &objs) {
+    glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    glEnable(GL_DEPTH_TEST);
-    glDepthFunc(GL_LEQUAL);
-    glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
+    pipeline.use();
 
-    createIrradianceMap();
+    pipeline.setVec3("albedo", glm::vec3(0.5f, 0.0f, 0.0f));
+    pipeline.setFloat("ao", 1.0f);
 
-    while (!closedWindow) {
-        handleBasicRenderLoop();
+    glm::mat4 projection = glm::perspective(glm::radians(camera->Zoom), (float)WINDOW_WIDTH / (float)WINDOW_HEIGHT, 0.1f, 100.0f);
+    glm::mat4 view = camera->getViewMatrix();
 
-        glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    pipeline.setVec3("dirLight.direction", glm::normalize(directionLight.direction));
+    pipeline.setVec3("dirLight.color", directionLight.diffuse);
+    pipeline.setBool("switchValues", switchValues);
 
-        pipeline.use();
+    pipeline.setMat4("projection", projection);
+    pipeline.setMat4("view", view);
+    pipeline.setVec3("viewPos", camera->Position);
+    pipeline.setInt("irradianceMap", 0);
+    pipeline.setInt("prefilterMap", 1);
+    pipeline.setInt("brdfLUT", 2);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, irradianceMap);
 
-        pipeline.setVec3("albedo", glm::vec3(0.5f, 0.0f, 0.0f));
-        pipeline.setFloat("ao", 1.0f);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, prefilterMap);
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, brdfLUTTexture);
 
-        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)WINDOW_WIDTH / (float)WINDOW_HEIGHT, 0.1f, 100.0f);
-        glm::mat4 view = camera.getViewMatrix();
+    for (unsigned int i = 0; i < lightPositions.size(); i++) {
+        pipeline.setVec3("lights[" + std::to_string(i) + "].position", lightPositions[i]);
+        pipeline.setVec3("lights[" + std::to_string(i) + "].color", lightColors[i]);
+    }
 
-        pipeline.setVec3("dirLight.direction", glm::normalize(directionLight.direction));
-        pipeline.setVec3("dirLight.color", directionLight.diffuse);
-        pipeline.setBool("switchValues", switchValues);
+    glm::mat4 model = glm::mat4(1.0f);
+    if (showModel) {
+        pipeline.setBool("isModel", true);
+        drawModels(objs, pipeline);
+        pipeline.setBool("isModel", false);
+    } else {
+        glActiveTexture(GL_TEXTURE3);
+        glBindTexture(GL_TEXTURE_2D, albedoMap);
+        glActiveTexture(GL_TEXTURE4);
+        glBindTexture(GL_TEXTURE_2D, normalMap);
+        glActiveTexture(GL_TEXTURE5);
+        glBindTexture(GL_TEXTURE_2D, metallicMap);
+        glActiveTexture(GL_TEXTURE6);
+        glBindTexture(GL_TEXTURE_2D, aoMap);
+        glActiveTexture(GL_TEXTURE7);
+        glBindTexture(GL_TEXTURE_2D, roughnessMap);
 
-        pipeline.setMat4("projection", projection);
-        pipeline.setMat4("view", view);
-        pipeline.setVec3("viewPos", camera.Position);
-        pipeline.setInt("irradianceMap", 0);
-        pipeline.setInt("prefilterMap", 1);
-        pipeline.setInt("brdfLUT", 2);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_CUBE_MAP, irradianceMap);
+        pipeline.setInt("texture_diffuse", 3);
+        pipeline.setInt("texture_normal", 4);
+        pipeline.setInt("texture_metallic", 5);
+        pipeline.setInt("texture_ao", 6);
+        pipeline.setInt("texture_roughness", 7);
 
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_CUBE_MAP, prefilterMap);
-        glActiveTexture(GL_TEXTURE2);
-        glBindTexture(GL_TEXTURE_2D, brdfLUTTexture);
+        int nrRows    = 7;
+        int nrColumns = 7;
+        float spacing = 2.5;
+        for (int row = 0; row < nrRows; row++) {
+            pipeline.setFloat("metallic", (float)row / (float)nrRows);
 
-        for (unsigned int i = 0; i < lightPositions.size(); i++) {
-            pipeline.setVec3("lights[" + std::to_string(i) + "].position", lightPositions[i]);
-            pipeline.setVec3("lights[" + std::to_string(i) + "].color", lightColors[i]);
-        }
+            for (int col = 0; col < nrColumns; col++) {
+                pipeline.setFloat("roughness", glm::clamp((float) col / (float) nrColumns, 0.05f, 1.0f));
 
-        glm::mat4 model = glm::mat4(1.0f);
-        if (showModel) {
-            drawModels(pipeline, false);
-        } else {
-            glActiveTexture(GL_TEXTURE3);
-            glBindTexture(GL_TEXTURE_2D, albedoMap);
-            glActiveTexture(GL_TEXTURE4);
-            glBindTexture(GL_TEXTURE_2D, normalMap);
-            glActiveTexture(GL_TEXTURE5);
-            glBindTexture(GL_TEXTURE_2D, metallicMap);
-            glActiveTexture(GL_TEXTURE6);
-            glBindTexture(GL_TEXTURE_2D, aoMap);
-            glActiveTexture(GL_TEXTURE7);
-            glBindTexture(GL_TEXTURE_2D, roughnessMap);
+                model = glm::mat4(1.0f);
+                model = glm::translate(model, glm::vec3(
+                    (col - (nrColumns / 2)) * spacing, 
+                    (row - (nrRows / 2)) * spacing, 
+                    0.0f
+                ));
+                pipeline.setMat4("model", model);
 
-            pipeline.setInt("texture_diffuse", 3);
-            pipeline.setInt("texture_normal", 4);
-            pipeline.setInt("texture_metallic", 5);
-            pipeline.setInt("texture_ao", 6);
-            pipeline.setInt("texture_roughness", 7);
-
-            int nrRows    = 7;
-            int nrColumns = 7;
-            float spacing = 2.5;
-            for (int row = 0; row < nrRows; row++) {
-                pipeline.setFloat("metallic", (float)row / (float)nrRows);
-
-                for (int col = 0; col < nrColumns; col++) {
-                    pipeline.setFloat("roughness", glm::clamp((float) col / (float) nrColumns, 0.05f, 1.0f));
-
-                    model = glm::mat4(1.0f);
-                    model = glm::translate(model, glm::vec3(
-                        (col - (nrColumns / 2)) * spacing, 
-                        (row - (nrRows / 2)) * spacing, 
-                        0.0f
-                    ));
-                    pipeline.setMat4("model", model);
-
-                    glBindVertexArray(sphereBuffer.VAO);
-                    glDrawElements(GL_TRIANGLE_STRIP, indexCount, GL_UNSIGNED_INT, 0);
-                }
+                glBindVertexArray(sphereBuffer.VAO);
+                glDrawElements(GL_TRIANGLE_STRIP, indexCount, GL_UNSIGNED_INT, 0);
             }
         }
-
-        for (unsigned int i = 0; i < sizeof(lightPositions) / sizeof(lightPositions[0]); ++i)
-        {
-            glm::vec3 newPos = lightPositions[i] + glm::vec3(sin(glfwGetTime() * 5.0) * 5.0, 0.0, 0.0);
-            newPos = lightPositions[i];
-            pipeline.setVec3("lights[" + std::to_string(i) + "].position", lightPositions[i]);
-            pipeline.setVec3("lights[" + std::to_string(i) + "].color", lightColors[i]);
-
-            model = glm::mat4(1.0f);
-            model = glm::translate(model, newPos);
-            model = glm::scale(model, glm::vec3(0.5f));
-            pipeline.setMat4("model", model);
-            glBindVertexArray(sphereBuffer.VAO);
-            glDrawElements(GL_TRIANGLE_STRIP, indexCount, GL_UNSIGNED_INT, 0);
-        }
-
-        backgroundPipeline.use();
-        backgroundPipeline.setMat4("projection", projection);
-        backgroundPipeline.setMat4("view", view);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
-        backgroundPipeline.setInt("environmentMap", 0);
-
-        glBindVertexArray(cubemapBuffer.VAO);
-        glDrawArrays(GL_TRIANGLES, 0, 36);
-
-        handleImGui();
-        SDL_GL_SwapWindow(window);
-    }
-}
-
-void PBREngine::handleEvents() {
-    SDL_Event event;
-    SDL_Keycode type;
-    ImGuiIO& io = ImGui::GetIO(); (void)io;
-
-    while (SDL_PollEvent(&event)) {
-        ImGui_ImplSDL2_ProcessEvent(&event);
-        if (event.type == SDL_QUIT) {
-            closedWindow = true;
-        } else if (event.type == SDL_KEYUP) {
-            type = event.key.keysym.sym;
-            if (type >= SDLK_RIGHT && type <= SDLK_UP) keyDown[type - SDLK_RIGHT] = false;
-
-            if (type == SDLK_SPACE) showModel = !showModel;
-        } else if (event.type == SDL_KEYDOWN) {
-            type = event.key.keysym.sym;
-            if (type >= SDLK_RIGHT && type <= SDLK_UP) keyDown[type - SDLK_RIGHT] = true;
-        } else if (event.type == SDL_MOUSEMOTION && (!io.WantCaptureMouse || ImGuizmo::IsOver())) {
-            mouse_callback(event.motion.x, event.motion.y);
-        } else if (event.type == SDL_MOUSEWHEEL) {
-            scroll_callback(event.wheel.y);
-        } else if (event.type == SDL_WINDOWEVENT
-            && event.window.event == SDL_WINDOWEVENT_RESIZED) {
-            framebuffer_callback(event.window.data1, event.window.data2);
-        } else if (event.type == SDL_MOUSEBUTTONDOWN) {
-            handleClick(event.motion.x, event.motion.y);
-        }
     }
 
-    for (int i = 0; i < 4; i++) {
-        type = keyDown[i] ? SDLK_RIGHT + i : 0;
+    for (unsigned int i = 0; i < sizeof(lightPositions) / sizeof(lightPositions[0]); ++i)
+    {
+        glm::vec3 newPos = lightPositions[i] + glm::vec3(sin(glfwGetTime() * 5.0) * 5.0, 0.0, 0.0);
+        newPos = lightPositions[i];
+        pipeline.setVec3("lights[" + std::to_string(i) + "].position", lightPositions[i]);
+        pipeline.setVec3("lights[" + std::to_string(i) + "].color", lightColors[i]);
 
-        if (type == SDLK_UP)
-            camera.processKeyboard(FORWARD, deltaTime);
-        
-        if (type == SDLK_DOWN)
-            camera.processKeyboard(BACKWARD, deltaTime);
-
-        if (type == SDLK_LEFT)
-            camera.processKeyboard(LEFT, deltaTime);
-
-        if (type == SDLK_RIGHT)
-            camera.processKeyboard(RIGHT, deltaTime);
+        model = glm::mat4(1.0f);
+        model = glm::translate(model, newPos);
+        model = glm::scale(model, glm::vec3(0.5f));
+        pipeline.setMat4("model", model);
+        glBindVertexArray(sphereBuffer.VAO);
+        glDrawElements(GL_TRIANGLE_STRIP, indexCount, GL_UNSIGNED_INT, 0);
     }
+
+    backgroundPipeline.use();
+    backgroundPipeline.setMat4("projection", projection);
+    backgroundPipeline.setMat4("view", view);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
+    backgroundPipeline.setInt("environmentMap", 0);
+
+    glBindVertexArray(cubemapBuffer.VAO);
+    glDrawArrays(GL_TRIANGLES, 0, 36);
 }
 
 void PBREngine::handleImGui(){
-    ImGui_ImplOpenGL3_NewFrame();
-    ImGui_ImplSDL2_NewFrame();
-    ImGui::NewFrame();
-    ImGuizmo::BeginFrame();
-
     ImGui::Begin("Info");
     if (ImGui::CollapsingHeader("Scene Info")) {
         ImGui::SliderFloat3("Light Direction", (float*)&directionLight.direction, -1.0f, 1.0f);
@@ -426,14 +361,4 @@ void PBREngine::handleImGui(){
         }
     }
     ImGui::End();
-    
-    ImGui::Render();
-    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-}
-
-
-void PBREngine::drawModels(Shader& shader, bool skipTextures) {
-    shader.setBool("isModel", true);
-    GLEngine::drawModels(shader, skipTextures);
-    shader.setBool("isModel", false);
 }

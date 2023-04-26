@@ -14,12 +14,14 @@ struct SimplePointLight {
 class VoxelEngine : public GLEngine {
     public:
         void init_resources();
-        void run();
+        void render(std::vector<Model>& objs);
         void handleImGui();
 
-        void createVoxelGrid();
+        void createVoxelGrid(std::vector<Model>& objs);
     
     private:
+        bool firstTime = true;
+
         unsigned int voxelGridTexture;
         float voxelSize, voxelWorldSize, maxCoord, maxDistance = 10.0f;
         float indirectLightMultiplier = 0.5f, dirLightMultiplier = 0.4f,

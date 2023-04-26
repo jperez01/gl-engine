@@ -4,8 +4,6 @@
 #include <random>
 
 void DeferredEngine::init_resources() {
-    camera = Camera(glm::vec3(0.0f, 0.0f, 5.0f));
-
     renderPipeline = Shader("deferred/lighting.vs", "ssr/finalPassF.glsl");
     gbufferPipeline = Shader("aliasing/taa/taaGbuffer.vs", "aliasing/taa/taaGbuffer.fs");
     fxaaPipeline = Shader("deferred/lighting.vs", "aliasing/fxaa.fs");
@@ -19,15 +17,13 @@ void DeferredEngine::init_resources() {
     haltonSequences[i] = glm::vec2(createHaltonSequence(i + 1, 2), createHaltonSequence(i + 1, 3));
    }
 
-    Model newModel("../../resources/objects/sponzaBasic/glTF/Sponza.gltf", GLTF);
-    loadModelData(newModel);
-    usableObjs.push_back(newModel);
-
     quadBuffer = glutil::createScreenQuad();
 
     planeBuffer = glutil::createPlane();
     planeTexture = glutil::loadTexture("../../resources/textures/wood.png");
     planeModel = glm::mat4(1.0f);
+    planeModel = glm::translate(planeModel, glm::vec3(0.0, 0.0, 0.0));
+    planeModel = glm::scale(planeModel, glm::vec3(1.0f, 1.5f, 1.0f));
 
     std::random_device rd;
     std::mt19937 mt(rd());
@@ -118,144 +114,128 @@ void DeferredEngine::init_resources() {
 }
 
 
-void DeferredEngine::run() {
-    planeModel = glm::translate(planeModel, glm::vec3(0.0, 0.0, 0.0));
-    planeModel = glm::scale(planeModel, glm::vec3(1.0f, 1.5f, 1.0f));
+void DeferredEngine::render(std::vector<Model>& objs) {
+    jitterIndex = jitterIndex % 128;
+    jitter = haltonSequences[jitterIndex] * inverseScreenSize;
+    jitterIndex++;
 
-    while (!closedWindow) {
-        handleBasicRenderLoop();
+    glm::mat4 projection = glm::perspective(glm::radians(camera->Zoom), (float)WINDOW_WIDTH/ (float)WINDOW_HEIGHT, 0.1f, 100.0f);
+    glm::mat4 view = camera->getViewMatrix();
+    glm::mat4 model = glm::mat4(1.0f);
 
-        jitterIndex = jitterIndex % 128;
-        jitter = haltonSequences[jitterIndex] * inverseScreenSize;
-        jitterIndex++;
+    glBindFramebuffer(GL_FRAMEBUFFER, deferredFBO);
+        glClearColor(0.0, 0.0, 0.0, 1.0);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)WINDOW_WIDTH/ (float)WINDOW_HEIGHT, 0.1f, 100.0f);
-        glm::mat4 view = camera.getViewMatrix();
-        glm::mat4 model = glm::mat4(1.0f);
+        gbufferPipeline.use();
+        gbufferPipeline.setMat4("projection", projection);
+        gbufferPipeline.setMat4("view", view);
 
-        glBindFramebuffer(GL_FRAMEBUFFER, deferredFBO);
-            glClearColor(0.0, 0.0, 0.0, 1.0);
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-            gbufferPipeline.use();
-            gbufferPipeline.setMat4("projection", projection);
-            gbufferPipeline.setMat4("view", view);
-
-            gbufferPipeline.setMat4("prevProjection", prevProjection);
-            gbufferPipeline.setMat4("prevView", prevView);
-            if (shouldFXAA)
-                gbufferPipeline.setVec2("jitter", glm::vec2(0.0f));
-            else 
-                gbufferPipeline.setVec2("jitter", jitter);
-
-            glBindTextureUnit(0, planeTexture);
-            gbufferPipeline.setInt("texture_diffuse1", 0);
-
-            gbufferPipeline.setMat4("model", planeModel);
-
-            glBindVertexArray(planeBuffer.VAO);
-            glDrawArrays(GL_TRIANGLES, 0, 6);
-
-            model = glm::mat4(1.0f);
-            model = glm::scale(model, glm::vec3(0.1f));
-            usableObjs[0].model_matrix = model;
-
-            gbufferPipeline.setMat4("model", model);
-            drawModels(gbufferPipeline);
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-        glBindFramebuffer(GL_FRAMEBUFFER, ssrFBO);
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-            ssrPipeline.use();
-            glBindTextureUnit(0, depthMap);
-            glBindTextureUnit(1, gNormal);
-            glBindTextureUnit(2, gAlbedo);
-            glBindTextureUnit(3, gReflectionPosition);
-            glBindTextureUnit(4, gMetallic);
-
-            ssrPipeline.setInt("normalTexture", 1);
-            ssrPipeline.setInt("colorTexture", 2);
-            ssrPipeline.setInt("depthTexture", 0);
-            ssrPipeline.setInt("positionTexture", 3);
-            ssrPipeline.setInt("metallicRoughnessTexture", 4);
-
-            ssrPipeline.setMat4("projection", projection);
-            ssrPipeline.setMat4("view", view);
-            ssrPipeline.setMat4("invProjection", glm::inverse(projection));
-            ssrPipeline.setMat4("invView", glm::inverse(view));
-            glBindVertexArray(quadBuffer.VAO);
-            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-        if (shouldFXAA) 
-            glBindFramebuffer(GL_FRAMEBUFFER, aaFBO);
+        gbufferPipeline.setMat4("prevProjection", prevProjection);
+        gbufferPipeline.setMat4("prevView", prevView);
+        if (shouldFXAA)
+            gbufferPipeline.setVec2("jitter", glm::vec2(0.0f));
         else 
-            glBindFramebuffer(GL_FRAMEBUFFER, simpleColorFBO);
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-            renderPipeline.use();
+            gbufferPipeline.setVec2("jitter", jitter);
 
-            glBindTextureUnit(0, gPosition);
-            glBindTextureUnit(1, gNormal);
-            glBindTextureUnit(2, gAlbedo);
-            glBindTextureUnit(3, gReflectionColor);
+        glBindTextureUnit(0, planeTexture);
+        gbufferPipeline.setInt("texture_diffuse1", 0);
 
-            renderPipeline.setInt("gPosition", 0);
-            renderPipeline.setInt("gNormal", 1);
-            renderPipeline.setInt("gAlbedoSpec", 2);
-            renderPipeline.setInt("gReflectionColor", 3);
+        gbufferPipeline.setMat4("model", planeModel);
 
-            renderPipeline.setVec3("directionalLight.direction", directionalLight.direction);
-            renderPipeline.setVec3("directionalLight.color", directionalLight.color);
+        glBindVertexArray(planeBuffer.VAO);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
 
-            for (unsigned int i = 0; i < lights.size(); i++) {
-                std::string name = "lights[" + std::to_string(i) + "].";
-                renderPipeline.setVec3(name + "Position", lights[i].position);
-                renderPipeline.setVec3(name + "Color", lights[i].color);
+        model = glm::mat4(1.0f);
+        model = glm::scale(model, glm::vec3(0.1f));
+        objs[0].model_matrix = model;
 
-                const float constant = 1.0f;
-                const float linear = 0.7f;
-                const float quadratic = 1.8f;
+        gbufferPipeline.setMat4("model", model);
+        drawModels(objs, gbufferPipeline);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-                renderPipeline.setFloat(name + "Linear", linear);
-                renderPipeline.setFloat(name + "Quadratic", quadratic);
+    glBindFramebuffer(GL_FRAMEBUFFER, ssrFBO);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        ssrPipeline.use();
+        glBindTextureUnit(0, depthMap);
+        glBindTextureUnit(1, gNormal);
+        glBindTextureUnit(2, gAlbedo);
+        glBindTextureUnit(3, gReflectionPosition);
+        glBindTextureUnit(4, gMetallic);
 
-                const float maxBrightness = std::fmaxf(std::fmaxf(lights[i].color.r, lights[i].color.g), lights[i].color.b);
-                float radius = (-linear + std::sqrt(linear * linear - 4 * quadratic * (constant - (256.0f / 5.0f) * maxBrightness))) / (2.0f * quadratic);
-                renderPipeline.setFloat(name + "Radius", globalRadius);
-            }
-            renderPipeline.setVec3("viewPos", camera.Position);
-            
-            glBindVertexArray(quadBuffer.VAO);
-            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        ssrPipeline.setInt("normalTexture", 1);
+        ssrPipeline.setInt("colorTexture", 2);
+        ssrPipeline.setInt("depthTexture", 0);
+        ssrPipeline.setInt("positionTexture", 3);
+        ssrPipeline.setInt("metallicRoughnessTexture", 4);
 
-        if (shouldFXAA) {
-            renderFXAA();
-        } else {
-            renderTAA();
+        ssrPipeline.setMat4("projection", projection);
+        ssrPipeline.setMat4("view", view);
+        ssrPipeline.setMat4("invProjection", glm::inverse(projection));
+        ssrPipeline.setMat4("invView", glm::inverse(view));
+        glBindVertexArray(quadBuffer.VAO);
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    if (shouldFXAA) 
+        glBindFramebuffer(GL_FRAMEBUFFER, aaFBO);
+    else 
+        glBindFramebuffer(GL_FRAMEBUFFER, simpleColorFBO);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        renderPipeline.use();
+
+        glBindTextureUnit(0, gPosition);
+        glBindTextureUnit(1, gNormal);
+        glBindTextureUnit(2, gAlbedo);
+        glBindTextureUnit(3, gReflectionColor);
+
+        renderPipeline.setInt("gPosition", 0);
+        renderPipeline.setInt("gNormal", 1);
+        renderPipeline.setInt("gAlbedoSpec", 2);
+        renderPipeline.setInt("gReflectionColor", 3);
+
+        renderPipeline.setVec3("directionalLight.direction", directionalLight.direction);
+        renderPipeline.setVec3("directionalLight.color", directionalLight.color);
+
+        for (unsigned int i = 0; i < lights.size(); i++) {
+            std::string name = "lights[" + std::to_string(i) + "].";
+            renderPipeline.setVec3(name + "Position", lights[i].position);
+            renderPipeline.setVec3(name + "Color", lights[i].color);
+
+            const float constant = 1.0f;
+            const float linear = 0.7f;
+            const float quadratic = 1.8f;
+
+            renderPipeline.setFloat(name + "Linear", linear);
+            renderPipeline.setFloat(name + "Quadratic", quadratic);
+
+            const float maxBrightness = std::fmaxf(std::fmaxf(lights[i].color.r, lights[i].color.g), lights[i].color.b);
+            float radius = (-linear + std::sqrt(linear * linear - 4 * quadratic * (constant - (256.0f / 5.0f) * maxBrightness))) / (2.0f * quadratic);
+            renderPipeline.setFloat(name + "Radius", globalRadius);
         }
+        renderPipeline.setVec3("viewPos", camera->Position);
+            
+        glBindVertexArray(quadBuffer.VAO);
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, deferredFBO);
-        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-        glBlitFramebuffer(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, GL_DEPTH_BUFFER_BIT, GL_NEAREST);
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-        prevProjection = projection;
-        prevView = view;
-
-        ImGui::Render();
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-
-        SDL_GL_SwapWindow(window);
+    if (shouldFXAA) {
+        renderFXAA();
+    } else {
+        renderTAA();
     }
+
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, deferredFBO);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+    glBlitFramebuffer(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, GL_DEPTH_BUFFER_BIT, GL_NEAREST);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    prevProjection = projection;
+    prevView = view;
 }
 
 void DeferredEngine::handleImGui() {
     ImGuiIO& io = ImGui::GetIO(); (void)io;
-    ImGui_ImplOpenGL3_NewFrame();
-    ImGui_ImplSDL2_NewFrame();
-    ImGui::NewFrame();
-    ImGuizmo::BeginFrame();
 
     ImGui::Begin("Info");
     if (ImGui::CollapsingHeader("Lights")) {
@@ -291,8 +271,8 @@ void DeferredEngine::handleImGui() {
     }
     ImGui::End();
 
-    glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)WINDOW_WIDTH/ (float)WINDOW_HEIGHT, 0.1f, 100.0f);
-    glm::mat4 view = camera.getViewMatrix();
+    glm::mat4 projection = glm::perspective(glm::radians(camera->Zoom), (float)WINDOW_WIDTH/ (float)WINDOW_HEIGHT, 0.1f, 100.0f);
+    glm::mat4 view = camera->getViewMatrix();
 
     ImGuizmo::SetOrthographic(false);
     ImGuizmo::SetRect(0, 0, io.DisplaySize.x, io.DisplaySize.y);

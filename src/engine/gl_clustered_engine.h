@@ -22,7 +22,7 @@ struct ScreenToView {
 class ClusteredEngine : public GLEngine {
 public:
     void init_resources();
-    void run();
+    void render(std::vector<Model>& objs);
     void handleImGui();
     
 private:

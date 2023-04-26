@@ -9,8 +9,6 @@
 #include <glm/gtx/string_cast.hpp>
 
 void RenderEngine::init_resources() {
-    camera = Camera(glm::vec3(0.0f, 0.0f, 7.0f));
-    
     pipeline = Shader("shadowPoints/model.vs", "shadowPoints/model.fs");
     mapPipeline = Shader("cubemap/map.vs", "cubemap/map.fs");
     cascadeMapPipeline = Shader("shadows/cascadeV.glsl", "shadows/map.fs", "shadows/cascadeG.glsl");
@@ -19,11 +17,6 @@ void RenderEngine::init_resources() {
 
     debugCascadePipeline = Shader("cascade/cascadeDebugV.glsl", "cascade/cascadeDebugF.glsl");
     debugDepthPipeline = Shader("cascade/mapDebugV.glsl", "cascade/mapDebugF.glsl");
-    
-    Model newModel("../../resources/objects/sponzaBasic/glTF/Sponza.gltf", GLTF);
-    newModel.model_matrix = glm::scale(glm::mat4(1.0f), glm::vec3(0.05f));
-    loadModelData(newModel);
-    usableObjs.push_back(newModel);
 
     for (int i = 0; i < 4; i++) {
         depthCubemaps[i] = glutil::createCubemap(2048, 2048, GL_FLOAT, GL_DEPTH_COMPONENT, GL_DEPTH_COMPONENT);
@@ -89,232 +82,174 @@ void RenderEngine::init_resources() {
     if (status != GL_FRAMEBUFFER_COMPLETE) {
         std::cout << "Framebuffer is not complete!" << std::endl;
     }
-}
 
-void RenderEngine::run() {
     path = "";
     startTime = static_cast<float>(SDL_GetTicks());
+}
 
-    while (!closedWindow) {
-        handleBasicRenderLoop();
-        float currentFrame = static_cast<float>(SDL_GetTicks());
-        animationTime = (currentFrame - startTime) / 1000.0f;
+void RenderEngine::render(std::vector<Model>& objs) {
+    float currentFrame = static_cast<float>(SDL_GetTicks());
+    animationTime = (currentFrame - startTime) / 1000.0f;
 
-        checkFrustum();
+    checkFrustum(objs);
 
-        glClearColor(1.0, 0.0, 0.0, 1.0);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+    glClearColor(1.0, 0.0, 0.0, 1.0);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
-        // Cascaded Shadow calculation
-        auto lightMatrices = getLightSpaceMatrices();
-        if (lightMatricesCache.size() != 0) lightMatrices = lightMatricesCache;
-        glNamedBufferSubData(matricesUBO, 0, sizeof(glm::mat4x4) * lightMatrices.size(), lightMatrices.data());
+    // Cascaded Shadow calculation
+    auto lightMatrices = getLightSpaceMatrices();
+    if (lightMatricesCache.size() != 0) lightMatrices = lightMatricesCache;
+    glNamedBufferSubData(matricesUBO, 0, sizeof(glm::mat4x4) * lightMatrices.size(), lightMatrices.data());
 
-        cascadeMapPipeline.use();
+    cascadeMapPipeline.use();
 
-        glBindFramebuffer(GL_FRAMEBUFFER, dirDepthFBO);
-            glViewport(0, 0, depthMapResolution, depthMapResolution);
+    glBindFramebuffer(GL_FRAMEBUFFER, dirDepthFBO);
+        glViewport(0, 0, depthMapResolution, depthMapResolution);
+        glClear(GL_DEPTH_BUFFER_BIT);
+
+        glCullFace(GL_FRONT);
+        renderScene(objs, cascadeMapPipeline, true);
+        glCullFace(GL_BACK);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    depthCubemapPipeline.use();
+
+    // Shadow Cubemap Calculation
+    glViewport(0, 0, 2048, 2048);
+    glBindFramebuffer(GL_FRAMEBUFFER, depthFBO);
+        float aspect = (float)shadowWidth / (float)shadowHeight;
+        float near = 1.0f;
+        float far = 25.0f;
+        glm::mat4 shadowProj = glm::perspective(glm::radians(90.0f), aspect, near, far);
+        glm::mat4 planeModel = glm::mat4(1.0f);
+        planeModel = glm::translate(planeModel, glm::vec3(0.0, -2.0, 0.0));
+
+        for (int i = 0; i < 4; i++) {
+            glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, depthCubemaps[i], 0);
             glClear(GL_DEPTH_BUFFER_BIT);
 
-            glCullFace(GL_FRONT);
-            renderScene(cascadeMapPipeline, true);
-            glCullFace(GL_BACK);
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glm::vec3 lightPos = pointLights[i].position;
+            std::vector<glm::mat4> shadowTransforms;
+            shadowTransforms.push_back(shadowProj * 
+                glm::lookAt(lightPos, lightPos + glm::vec3( 1.0, 0.0, 0.0), glm::vec3(0.0,-1.0, 0.0)));
+            shadowTransforms.push_back(shadowProj * 
+                glm::lookAt(lightPos, lightPos + glm::vec3(-1.0, 0.0, 0.0), glm::vec3(0.0,-1.0, 0.0)));
+            shadowTransforms.push_back(shadowProj * 
+                glm::lookAt(lightPos, lightPos + glm::vec3( 0.0, 1.0, 0.0), glm::vec3(0.0, 0.0, 1.0)));
+            shadowTransforms.push_back(shadowProj * 
+                glm::lookAt(lightPos, lightPos + glm::vec3( 0.0,-1.0, 0.0), glm::vec3(0.0, 0.0,-1.0)));
+            shadowTransforms.push_back(shadowProj * 
+                glm::lookAt(lightPos, lightPos + glm::vec3( 0.0, 0.0, 1.0), glm::vec3(0.0,-1.0, 0.0)));
+            shadowTransforms.push_back(shadowProj * 
+                glm::lookAt(lightPos, lightPos + glm::vec3( 0.0, 0.0,-1.0), glm::vec3(0.0,-1.0, 0.0)));
 
-        depthCubemapPipeline.use();
-
-        // Shadow Cubemap Calculation
-        glViewport(0, 0, 2048, 2048);
-        glBindFramebuffer(GL_FRAMEBUFFER, depthFBO);
-            float aspect = (float)shadowWidth / (float)shadowHeight;
-            float near = 1.0f;
-            float far = 25.0f;
-            glm::mat4 shadowProj = glm::perspective(glm::radians(90.0f), aspect, near, far);
-            glm::mat4 planeModel = glm::mat4(1.0f);
-            planeModel = glm::translate(planeModel, glm::vec3(0.0, -2.0, 0.0));
-
-            for (int i = 0; i < 4; i++) {
-                glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, depthCubemaps[i], 0);
-                glClear(GL_DEPTH_BUFFER_BIT);
-
-                glm::vec3 lightPos = pointLights[i].position;
-                std::vector<glm::mat4> shadowTransforms;
-                shadowTransforms.push_back(shadowProj * 
-                    glm::lookAt(lightPos, lightPos + glm::vec3( 1.0, 0.0, 0.0), glm::vec3(0.0,-1.0, 0.0)));
-                shadowTransforms.push_back(shadowProj * 
-                    glm::lookAt(lightPos, lightPos + glm::vec3(-1.0, 0.0, 0.0), glm::vec3(0.0,-1.0, 0.0)));
-                shadowTransforms.push_back(shadowProj * 
-                    glm::lookAt(lightPos, lightPos + glm::vec3( 0.0, 1.0, 0.0), glm::vec3(0.0, 0.0, 1.0)));
-                shadowTransforms.push_back(shadowProj * 
-                    glm::lookAt(lightPos, lightPos + glm::vec3( 0.0,-1.0, 0.0), glm::vec3(0.0, 0.0,-1.0)));
-                shadowTransforms.push_back(shadowProj * 
-                    glm::lookAt(lightPos, lightPos + glm::vec3( 0.0, 0.0, 1.0), glm::vec3(0.0,-1.0, 0.0)));
-                shadowTransforms.push_back(shadowProj * 
-                    glm::lookAt(lightPos, lightPos + glm::vec3( 0.0, 0.0,-1.0), glm::vec3(0.0,-1.0, 0.0)));
-
-                for (int i = 0; i < 6; i++) {
-                    depthCubemapPipeline.setMat4("shadowMatrices[" + std::to_string(i)+ "]", shadowTransforms[i]);
-                }
-                depthCubemapPipeline.setVec3("lightPos", lightPos);
-                depthCubemapPipeline.setFloat("far_plane", far);
-
-                drawModels(depthCubemapPipeline, true);
-
-                depthCubemapPipeline.setMat4("model", planeModel);
-                glBindVertexArray(planeBuffer.VAO);
-                glDrawArrays(GL_TRIANGLES, 0, 6);
+            for (int i = 0; i < 6; i++) {
+                depthCubemapPipeline.setMat4("shadowMatrices[" + std::to_string(i)+ "]", shadowTransforms[i]);
             }
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            depthCubemapPipeline.setVec3("lightPos", lightPos);
+            depthCubemapPipeline.setFloat("far_plane", far);
 
-        glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            drawModels(objs, depthCubemapPipeline, true);
 
-        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)WINDOW_WIDTH/ (float)WINDOW_HEIGHT, 0.1f, 100.0f);
-        glm::mat4 view = camera.getViewMatrix();
-
-        pipeline.use();
-
-        pipeline.setMat4("projection", projection);
-        pipeline.setMat4("view", view);
-        pipeline.setFloat("shininess", shininess);
-        pipeline.setFloat("far_plane", cameraFarPlane);
-
-        pipeline.setVec3("dirLight.direction", directionLight.direction);
-        pipeline.setVec3("dirLight.ambient", directionLight.ambient);
-        pipeline.setVec3("dirLight.specular", directionLight.specular);
-        pipeline.setVec3("dirLight.diffuse", directionLight.diffuse);
-
-        for (int i = 0; i < 4; i++) {
-            std::string name = "pointLights[" + std::to_string(i) + "]";
-
-            pipeline.setVec3(name + ".position", pointLights[i].position);
-            pipeline.setVec3(name + ".ambient", pointLights[i].ambient);
-            pipeline.setVec3(name + ".specular", pointLights[i].specular);
-            pipeline.setVec3(name + ".diffuse", pointLights[i].diffuse);
+            depthCubemapPipeline.setMat4("model", planeModel);
+            glBindVertexArray(planeBuffer.VAO);
+            glDrawArrays(GL_TRIANGLES, 0, 6);
         }
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-        pipeline.setVec3("viewPos", camera.Position);
+    glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        glBindTextureUnit(3, depthMap);
-        pipeline.setInt("shadowMap", 3);
+    glm::mat4 projection = glm::perspective(glm::radians(camera->Zoom), (float)WINDOW_WIDTH/ (float)WINDOW_HEIGHT, 0.1f, 100.0f);
+    glm::mat4 view = camera->getViewMatrix();
 
-        pipeline.setInt("cascadeCount", shadowCascadeLevels.size());
-        for (size_t i = 0; i < shadowCascadeLevels.size(); i++) {
-            pipeline.setFloat("cascadePlaneDistances[" + std::to_string(i) + "]", shadowCascadeLevels[i]);
-        }
-        glActiveTexture(GL_TEXTURE8);
-        glBindTexture(GL_TEXTURE_2D_ARRAY, lightDepthMaps);
-        pipeline.setInt("cascadedMap", 8);
-        pipeline.setMat4("view", view);
+    pipeline.use();
 
-        for (int i = 0; i < 4; i++) {
-            glActiveTexture(GL_TEXTURE4 + i);
-            glBindTexture(GL_TEXTURE_CUBE_MAP, depthCubemaps[i]);
-            pipeline.setInt("shadowMaps[" + std::to_string(i) + "]", 4 + i);
-        }
+    pipeline.setMat4("projection", projection);
+    pipeline.setMat4("view", view);
+    pipeline.setFloat("shininess", shininess);
+    pipeline.setFloat("far_plane", cameraFarPlane);
 
-        renderScene(pipeline);
+    pipeline.setVec3("dirLight.direction", directionLight.direction);
+    pipeline.setVec3("dirLight.ambient", directionLight.ambient);
+    pipeline.setVec3("dirLight.specular", directionLight.specular);
+    pipeline.setVec3("dirLight.diffuse", directionLight.diffuse);
 
-        if (lightMatricesCache.size() != 0) {
-            glEnable(GL_BLEND);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-            debugCascadePipeline.use();
-            debugCascadePipeline.setMat4("projection", projection);
-            debugCascadePipeline.setMat4("view", view);
-            drawCascadeVolumeVisualizers(lightMatricesCache, &debugCascadePipeline);
-            glDisable(GL_BLEND);
-        }
+    for (int i = 0; i < 4; i++) {
+        std::string name = "pointLights[" + std::to_string(i) + "]";
 
-        glDepthFunc(GL_LEQUAL);
-            glm::mat4 convertedView = glm::mat4(glm::mat3(view));
-            mapPipeline.use();
-            mapPipeline.setMat4("projection", projection);
-            mapPipeline.setMat4("view", convertedView);
+        pipeline.setVec3(name + ".position", pointLights[i].position);
+        pipeline.setVec3(name + ".ambient", pointLights[i].ambient);
+        pipeline.setVec3(name + ".specular", pointLights[i].specular);
+        pipeline.setVec3(name + ".diffuse", pointLights[i].diffuse);
+    }
 
-            glBindVertexArray(cubemapBuffer.VAO);
-            glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
-            glDrawArrays(GL_TRIANGLES, 0, 36);
-        glDepthFunc(GL_LESS);
+    pipeline.setVec3("viewPos", camera->Position);
 
-        debugDepthPipeline.use();
-        debugDepthPipeline.setInt("layer", debugLayer);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D_ARRAY, lightDepthMaps);
-        if (showQuad) {
-            glBindVertexArray(quadBuffer.VAO);
-            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-        }
-        handleImGui();
+    glBindTextureUnit(3, depthMap);
+    pipeline.setInt("shadowMap", 3);
 
-        SDL_GL_SwapWindow(window);
+    pipeline.setInt("cascadeCount", shadowCascadeLevels.size());
+    for (size_t i = 0; i < shadowCascadeLevels.size(); i++) {
+        pipeline.setFloat("cascadePlaneDistances[" + std::to_string(i) + "]", shadowCascadeLevels[i]);
+    }
+    glActiveTexture(GL_TEXTURE8);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, lightDepthMaps);
+    pipeline.setInt("cascadedMap", 8);
+    pipeline.setMat4("view", view);
+
+    for (int i = 0; i < 4; i++) {
+        glActiveTexture(GL_TEXTURE4 + i);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, depthCubemaps[i]);
+        pipeline.setInt("shadowMaps[" + std::to_string(i) + "]", 4 + i);
+    }
+
+    renderScene(objs, pipeline);
+
+    if (lightMatricesCache.size() != 0) {
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        debugCascadePipeline.use();
+        debugCascadePipeline.setMat4("projection", projection);
+        debugCascadePipeline.setMat4("view", view);
+        drawCascadeVolumeVisualizers(lightMatricesCache, &debugCascadePipeline);
+        glDisable(GL_BLEND);
+    }
+
+    glDepthFunc(GL_LEQUAL);
+        glm::mat4 convertedView = glm::mat4(glm::mat3(view));
+        mapPipeline.use();
+        mapPipeline.setMat4("projection", projection);
+        mapPipeline.setMat4("view", convertedView);
+
+        glBindVertexArray(cubemapBuffer.VAO);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
+        glDrawArrays(GL_TRIANGLES, 0, 36);
+    glDepthFunc(GL_LESS);
+
+    debugDepthPipeline.use();
+    debugDepthPipeline.setInt("layer", debugLayer);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, lightDepthMaps);
+    if (showQuad) {
+        glBindVertexArray(quadBuffer.VAO);
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
     }
 }
 
-void RenderEngine::handleEvents() {
-    SDL_Event event;
-    SDL_Keycode type;
-    ImGuiIO& io = ImGui::GetIO(); (void)io;
-
-    while (SDL_PollEvent(&event)) {
-            ImGui_ImplSDL2_ProcessEvent(&event);
-            if (event.type == SDL_QUIT) {
-                closedWindow = true;
-            } else if (event.type == SDL_KEYDOWN) {
-                SDL_Keycode type = event.key.keysym.sym;
-
-                if (type == SDLK_UP)
-                    camera.processKeyboard(FORWARD, deltaTime);
-                
-                if (type == SDLK_DOWN)
-                    camera.processKeyboard(BACKWARD, deltaTime);
-
-                if (type == SDLK_LEFT)
-                    camera.processKeyboard(LEFT, deltaTime);
-
-                if (type == SDLK_RIGHT)
-                    camera.processKeyboard(RIGHT, deltaTime);
-                
-                if (type == SDLK_l) camera.shouldUseRadar = !camera.shouldUseRadar;
-                /*
-                if (type == SDLK_c) {
-                    lightMatricesCache = getLightSpaceMatrices();
-                }
-                if (type == SDLK_v) {
-                    lightMatricesCache.clear();
-                }
-
-                if (type == SDLK_q) showQuad = !showQuad;
-                if (type == SDLK_j) {
-                    debugLayer++;
-                    if (debugLayer > shadowCascadeLevels.size()) debugLayer = 0;
-                }
-                */
-            } else if (event.type == SDL_MOUSEMOTION && (!io.WantCaptureMouse || ImGuizmo::IsOver())) {
-                mouse_callback(event.motion.x, event.motion.y);
-            } else if (event.type == SDL_MOUSEWHEEL) {
-                scroll_callback(event.wheel.y);
-            } else if (event.type == SDL_WINDOWEVENT
-                && event.window.event == SDL_WINDOWEVENT_RESIZED) {
-                framebuffer_callback(event.window.data1, event.window.data2);
-            } else if (event.type == SDL_MOUSEBUTTONDOWN) {
-                handleClick(event.motion.x, event.motion.y);
-            }
-        }
-}
-
-void RenderEngine::checkFrustum() {
+void RenderEngine::checkFrustum(std::vector<Model>& objs) {
     numCulled = 0;
-    for (Model& model : usableObjs) {
+    for (Model& model : objs) {
         glm::vec4 transformedMax = model.model_matrix * model.aabb.maxPoint;
         glm::vec4 transformedMin = model.model_matrix * model.aabb.minPoint;
 
-        model.shouldDraw = camera.isInsideFrustum(transformedMax, transformedMin);
+        model.shouldDraw = camera->isInsideFrustum(transformedMax, transformedMin);
         if (!model.shouldDraw) numCulled++;
     }
 }
 
-void RenderEngine::renderScene(Shader& shader, bool skipTextures) {
-    drawModels(shader, skipTextures);
+void RenderEngine::renderScene(std::vector<Model>& objs, Shader& shader, bool skipTextures) {
+    drawModels(objs, shader, skipTextures);
 
     glm::mat4 planeModel = glm::mat4(1.0f);
     planeModel = glm::translate(planeModel, glm::vec3(0.0, -2.0, 0.0));
@@ -329,11 +264,7 @@ void RenderEngine::renderScene(Shader& shader, bool skipTextures) {
 }
 
 void RenderEngine::handleImGui() {
-    ImGuiIO& io = ImGui::GetIO(); (void)io;
-    ImGui_ImplOpenGL3_NewFrame();
-    ImGui_ImplSDL2_NewFrame();
-    ImGui::NewFrame();
-    ImGuizmo::BeginFrame();
+    ImGuiIO& io = ImGui::GetIO();
 
     ImGui::Begin("Info");
     if (ImGui::CollapsingHeader("Point Lights")) {
@@ -357,6 +288,7 @@ void RenderEngine::handleImGui() {
         ImGui::SliderFloat3("Diffuse", (float*)&directionLight.diffuse, 0.0, 1.0);
     }
 
+    /*
     if (ImGui::CollapsingHeader("Models")) {
         ImGui::InputText("Model Path", &path);
         if (ImGui::Button("Load Model")) {
@@ -376,9 +308,10 @@ void RenderEngine::handleImGui() {
             ImGui::SliderInt("Animation", &chosenAnimation, 0, usableObjs[chosenObjIndex].numAnimations-1);
         }
     }
+    */
 
     if (ImGui::CollapsingHeader("Extras")) {
-        ImGui::RadioButton("Using Radar", camera.shouldUseRadar);
+        ImGui::RadioButton("Using Radar", camera->shouldUseRadar);
         ImGui::SliderFloat("Shininess", &shininess, 1, 200);
         if(ImGui::RadioButton("Translate", operation == ImGuizmo::TRANSLATE)) {
             operation = ImGuizmo::TRANSLATE;
@@ -392,16 +325,15 @@ void RenderEngine::handleImGui() {
     }
     ImGui::End();
 
-    glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)WINDOW_WIDTH/ (float)WINDOW_HEIGHT, 0.1f, 100.0f);
-    glm::mat4 view = camera.getViewMatrix();
+    glm::mat4 projection = glm::perspective(glm::radians(camera->Zoom), (float)WINDOW_WIDTH/ (float)WINDOW_HEIGHT, 0.1f, 100.0f);
+    glm::mat4 view = camera->getViewMatrix();
 
+    /*
     ImGuizmo::SetOrthographic(false);
     ImGuizmo::SetRect(0, 0, io.DisplaySize.x, io.DisplaySize.y);
     ImGuizmo::Manipulate(glm::value_ptr(view), glm::value_ptr(projection), operation,
         ImGuizmo::LOCAL, glm::value_ptr(usableObjs[chosenObjIndex].model_matrix));
-
-    ImGui::Render();
-    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    */
 }
 
 void RenderEngine::drawCascadeVolumeVisualizers(const std::vector<glm::mat4>& lightMatrices, Shader* shader)
@@ -489,9 +421,9 @@ std::vector<glm::mat4> RenderEngine::getLightSpaceMatrices() {
 
 glm::mat4 RenderEngine::getLightSpaceMatrix(float nearPlane, float farPlane) {
     const auto proj = glm::perspective(
-        glm::radians(camera.Zoom), (float)WINDOW_WIDTH / (float)WINDOW_HEIGHT, nearPlane,
+        glm::radians(camera->Zoom), (float)WINDOW_WIDTH / (float)WINDOW_HEIGHT, nearPlane,
         farPlane);
-    auto corners = getFrustumCornerWorldSpace(proj, camera.getViewMatrix());
+    auto corners = getFrustumCornerWorldSpace(proj, camera->getViewMatrix());
 
     glm::vec3 center(0, 0, 0);
     for (const auto& v : corners) center += glm::vec3(v);
