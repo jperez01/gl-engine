@@ -1,0 +1,55 @@
+﻿{
+  "configurations": [
+    {
+      "name": "x64-Debug",
+      "generator": "Ninja",
+      "configurationType": "Debug",
+      "inheritEnvironments": [ "msvc_x64_x64" ],
+      "buildRoot": "${projectDir}\\out\\build\\${name}",
+      "installRoot": "${projectDir}\\out\\install\\${name}",
+      "cmakeCommandArgs": "",
+      "buildCommandArgs": "",
+      "ctestCommandArgs": "",
+      "variables": [
+        {
+          "name": "sdl2_DIR",
+          "value": "C:/Users/jpabl/Documents/development/SDL2-2.26.2",
+          "type": "PATH"
+        },
+        {
+          "name": "assimp_DIR",
+          "value": "C:/dev/vcpkg/packages/assimp_x86-windows",
+          "type": "PATH"
+        }
+      ]
+    },
+    {
+      "name": "x64-Release",
+      "generator": "Ninja",
+      "configurationType": "Release",
+      "buildRoot": "${projectDir}\\out\\build\\${name}",
+      "installRoot": "${projectDir}\\out\\install\\${name}",
+      "cmakeCommandArgs": "",
+      "buildCommandArgs": "",
+      "ctestCommandArgs": "",
+      "inheritEnvironments": [ "msvc_x64_x64" ],
+      "variables": [
+        {
+          "name": "sdl2_DIR",
+          "value": "C:/Users/jpabl/Documents/development/SDL2-2.26.2",
+          "type": "PATH"
+        },
+        {
+          "name": "assimp_DIR",
+          "value": "C:/dev/vcpkg/packages/assimp_x86-windows",
+          "type": "PATH"
+        },
+        {
+          "name": "VCPKG_TRACE_FIND_PACKAGE",
+          "value": "True",
+          "type": "BOOL"
+        }
+      ]
+    }
+  ]
+}

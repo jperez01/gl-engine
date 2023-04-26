@@ -41,9 +41,13 @@ target_include_directories(gl_engine PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${PROJECT_SOURCE_DIR}/include)
 
+find_package(assimp CONFIG REQUIRED)
+message("${assimp_DIR}")
+
 set (GLFW_LIB "${PROJECT_SOURCE_DIR}/libs/GLFW/glfw3.lib")
 set (ASSIMP_LIB "${PROJECT_SOURCE_DIR}/libs/assimp/assimp.lib")
-target_link_libraries(gl_tools glad glm stb_image imgui imGuizmo sdl2 ${GLFW_LIB} ${ASSIMP_LIB})
+
+target_link_libraries(gl_tools PUBLIC glad glm stb_image imgui imGuizmo sdl2 assimp::assimp)
 
 target_link_libraries(gl_engine gl_tools)
 target_link_libraries(compute_engine gl_tools)
