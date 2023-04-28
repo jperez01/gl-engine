@@ -24,7 +24,7 @@ class VoxelEngine : public GLEngine {
 
         unsigned int voxelGridTexture;
         float voxelSize, voxelWorldSize, maxCoord, maxDistance = 10.0f;
-        float indirectLightMultiplier = 0.5f, dirLightMultiplier = 0.4f,
+        float indirectLightMultiplier = 0.5f, dirLightMultiplier = 2.0f,
             specularAngleMultiplier = 0.1f;
         int gridSize = 256;
         float someLod = 0;

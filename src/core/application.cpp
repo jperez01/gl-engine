@@ -1,4 +1,5 @@
 #include "application.h"
+#include "ui/ui.h"
 
 Application::Application(GLEngine* renderer) {
     mRenderer = renderer;
@@ -36,13 +37,10 @@ void Application::init()
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
-    ImGuiIO& io = ImGui::GetIO();
-    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-
-    ImGui::StyleColorsDark();
-
     ImGui_ImplSDL2_InitForOpenGL(window, gl_context);
     ImGui_ImplOpenGL3_Init("#version 460");
+
+    UI::init();
 
     glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
 
@@ -56,10 +54,14 @@ void Application::init()
 
     mRenderer->init_resources();
     Model newModel("../../resources/objects/sponzaBasic/glTF/Sponza.gltf", GLTF);
+    glm::mat4 model = glm::mat4(1.0f);
+    model = glm::scale(model, glm::vec3(0.1f));
+    newModel.model_matrix = model;
     mRenderer->loadModelData(newModel);
     usableObjs.push_back(newModel);
 
     mEditor.renderer = mRenderer;
+    mEditor.objs = &usableObjs;
 }
 
 void Application::cleanup()

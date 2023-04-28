@@ -39,11 +39,12 @@ namespace glutil {
     unsigned int loadFloatTexture(std::string path, GLenum format, GLenum storageFormat);
     unsigned int loadTexture(std::string path, GLenum dataType, GLenum format, GLenum storageFormat);
     unsigned int loadTexture(std::string path);
+    Texture loadSomeTexture(std::string path);
 
     unsigned int createTexture3D(int width, int height, int depth, GLenum storageFormat = GL_RGBA8);
     unsigned int createTextureArray(int size, int width, int height, GLenum dataType, GLenum format = GL_RGBA, GLenum storageFormat = GL_RGBA8, void* data = nullptr);
-    unsigned int createTexture(int width, int height, GLenum dataType, int nrComponents = 0, unsigned char* data = nullptr);
-    unsigned int createTexture(int width, int height, GLenum dataType, GLenum format = GL_RGBA, GLenum storageFormat = GL_RGBA8, void* data = nullptr);
+    unsigned int createTexture(int width, int height, GLenum dataType, int nrComponents = 0, unsigned char* data = nullptr, int levels = 4);
+    unsigned int createTexture(int width, int height, GLenum dataType, GLenum format = GL_RGBA, GLenum storageFormat = GL_RGBA8, void* data = nullptr, int levels = 4);
 
     unsigned int createCubemap(int width, int height, GLenum dataType, GLenum format = GL_DEPTH_COMPONENT, GLenum storageFormat = GL_DEPTH_COMPONENT, int nrComponents = -1);
     unsigned int loadCubemap(std::string path, std::vector<std::string> faces = defaultFaces);

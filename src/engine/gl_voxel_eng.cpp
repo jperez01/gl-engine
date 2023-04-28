@@ -15,7 +15,7 @@ void VoxelEngine::init_resources() {
     std::string cubemapPath = "../../resources/textures/skybox/";
     cubemap = EnviornmentCubemap(cubemapPath);
     
-    directionalLight.direction = glm::vec3(-0.2f, -1.0f, -0.3f);
+    directionalLight.direction = glm::vec3(0.2f, 1.0f, 0.3f);
     directionalLight.color = glm::vec3(0.8f);
 
     glm::vec3 pointLightPositions[] = {
@@ -139,7 +139,6 @@ void VoxelEngine::render(std::vector<Model>& objs) {
 }
 
 void VoxelEngine::handleImGui() {
-    ImGui::Begin("Info");
     if (ImGui::CollapsingHeader("Global Illumination Info")) {
         if (ImGui::SliderFloat("Voxel World Size", &voxelWorldSize, 0.1f, 2.0f)) {
         }
@@ -157,7 +156,6 @@ void VoxelEngine::handleImGui() {
         ImGui::Checkbox("Should show shadows", &shouldShowShadowMap);
         ImGui::Checkbox("Should cull front", &cullFront);
     }
-    ImGui::End();
     directionalLight.direction = glm::normalize(directionalLight.direction);
 }
 

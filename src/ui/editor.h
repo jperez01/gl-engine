@@ -15,9 +15,12 @@ public:
 	SceneEditor() = default;
 
 	void render(Camera& camera);
+	void renderAsList(Model& model);
 	void renderDebug(Camera& camera);
 
 	GLEngine* renderer = nullptr;
+	std::vector<Model> *objs = nullptr;
+	Mesh* chosenObj = nullptr;
 
 private:
 };

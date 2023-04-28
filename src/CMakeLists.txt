@@ -11,7 +11,7 @@ add_library(gl_tools
     utils/gl_model.cpp
     utils/shader.cpp
     utils/gl_types.cpp
-    utils/gl_compute.cpp)
+    utils/gl_compute.cpp "ui/ui.cpp")
 
 add_executable(gl_engine
     main.cpp
