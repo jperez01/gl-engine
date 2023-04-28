@@ -11,17 +11,11 @@
 #include <random>
 
 void ClusteredEngine::init_resources() {
-    camera = Camera(glm::vec3(0.0f, 5.0f, 5.0f));
-
     tileCreateCompute = ComputeShader("clustered/tileCreate.comp");
     clusterLightCompute = ComputeShader("clustered/clusterLights.comp");
     renderPipeline = Shader("clustered/lighting.vs", "clustered/pbr.fs");
     gBufferPipeline = Shader("deferred/gbuffer.vs", "deferred/gbuffer.fs");
     lightBoxPipeline = Shader("deferred/lightBox.vs", "deferred/lightBox.fs");
-
-    Model newModel("../../resources/objects/sponzaBasic/glTF/Sponza.gltf", GLTF);
-    loadModelData(newModel);
-    usableObjs.push_back(newModel);
 
     quadBuffer = glutil::createScreenQuad();
     cubeBuffer = glutil::createUnitCube();
@@ -47,9 +41,9 @@ void ClusteredEngine::init_resources() {
 
         lights.push_back(light);
     }
-    float value = log2(camera.zFar / camera.zNear);
+    float value = log2(camera->zFar / camera->zNear);
     scale = gridSizeZ / value;
-    bias = gridSizeZ * log2(camera.zNear) / value;
+    bias = gridSizeZ * log2(camera->zNear) / value;
 
     glCreateFramebuffers(1, &deferredFBO);
 
@@ -83,7 +77,7 @@ void ClusteredEngine::init_SSBOs() {
     glNamedBufferData(AABBGridSSBO, sizeof(glm::vec4) * 2 * numClusters, nullptr, GL_STATIC_DRAW);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, AABBGridSSBO);
 
-    glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)WINDOW_WIDTH/ (float)WINDOW_HEIGHT, 0.1f, 100.0f);
+    glm::mat4 projection = glm::perspective(glm::radians(camera->Zoom), (float)WINDOW_WIDTH/ (float)WINDOW_HEIGHT, 0.1f, 100.0f);
 
     ScreenToView info;
     info.inverseProj = glm::inverse(projection);
@@ -112,85 +106,62 @@ void ClusteredEngine::init_SSBOs() {
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 6, lightGlobalCountSSBO);
 }
 
-void ClusteredEngine::run() {
-    while(!closedWindow) {
-        handleBasicRenderLoop();
+void ClusteredEngine::render(std::vector<Model>& objs) {
+    glm::mat4 projection = glm::perspective(glm::radians(camera->Zoom), camera->aspect, 0.1f, 100.0f);
+    glm::mat4 view = camera->getViewMatrix();
 
-        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)WINDOW_WIDTH/ (float)WINDOW_HEIGHT, 0.1f, 100.0f);
-        glm::mat4 view = camera.getViewMatrix();
+    tileCreateCompute.use();
+    tileCreateCompute.setFloat("zNear", camera->zNear);
+    tileCreateCompute.setFloat("zFar", camera->zFar);
+    glDispatchCompute(gridSizeX, gridSizeY, gridSizeZ);
+    glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
-        tileCreateCompute.use();
-        tileCreateCompute.setFloat("zNear", camera.zNear);
-        tileCreateCompute.setFloat("zFar", camera.zFar);
-        glDispatchCompute(gridSizeX, gridSizeY, gridSizeZ);
-        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+    clusterLightCompute.use();
+    clusterLightCompute.setMat4("view", view);
+    glDispatchCompute(1, 1, 6);
+    glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
-        clusterLightCompute.use();
-        clusterLightCompute.setMat4("view", view);
-        glDispatchCompute(1, 1, 6);
-        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+    glm::mat4 model = glm::mat4(1.0f);
+    model = glm::scale(model, glm::vec3(0.1f));
 
-        glm::mat4 model = glm::mat4(1.0f);
-        model = glm::scale(model, glm::vec3(0.1f));
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    renderPipeline.use();
 
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        renderPipeline.use();
-
-        renderPipeline.setFloat("zNear", camera.zNear);
-        renderPipeline.setFloat("zFar", camera.zFar);
-        renderPipeline.setFloat("bias", bias);
-        renderPipeline.setFloat("scale", scale);
-        renderPipeline.setVec3("viewPos", camera.Position);
-        renderPipeline.setFloat("multiplier", lightMultiplier);
+    renderPipeline.setFloat("zNear", camera->zNear);
+    renderPipeline.setFloat("zFar", camera->zFar);
+    renderPipeline.setFloat("bias", bias);
+    renderPipeline.setFloat("scale", scale);
+    renderPipeline.setVec3("viewPos", camera->Position);
+    renderPipeline.setFloat("multiplier", lightMultiplier);
         
-        renderPipeline.setVec3("dirLight.direction", directionalLight.direction);
-        renderPipeline.setVec3("dirLight.color", directionalLight.diffuse);
+    renderPipeline.setVec3("dirLight.direction", directionalLight.direction);
+    renderPipeline.setVec3("dirLight.color", directionalLight.diffuse);
 
-        renderPipeline.setMat4("view", view);
-        renderPipeline.setMat4("projection", projection);
-        renderPipeline.setBool("useFragNormalFunction", shouldUseFragFunction);
-        usableObjs[0].model_matrix = model;
+    renderPipeline.setMat4("view", view);
+    renderPipeline.setMat4("projection", projection);
+    renderPipeline.setBool("useFragNormalFunction", shouldUseFragFunction);
+    objs[0].model_matrix = model;
 
-        drawModels(renderPipeline);
-        
-        /*
-        glBindVertexArray(quadBuffer.VAO);
-        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    drawModels(objs, renderPipeline);
 
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, deferredFBO);
-        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-        glBlitFramebuffer(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, GL_DEPTH_BUFFER_BIT, GL_NEAREST);
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        */
+    lightBoxPipeline.use();
+    lightBoxPipeline.setMat4("projection", projection);
+    lightBoxPipeline.setMat4("view", view);
 
-        lightBoxPipeline.use();
-        lightBoxPipeline.setMat4("projection", projection);
-        lightBoxPipeline.setMat4("view", view);
+    for (unsigned int i = 0; i < lights.size(); i++) {
+        model = glm::mat4(1.0f);
+        model = glm::translate(model, glm::vec3(lights[i].position));
+        model = glm::scale(model, glm::vec3(0.25f));
+        lightBoxPipeline.setMat4("model", model);
+        lightBoxPipeline.setVec3("lightColor", lights[i].color);
 
-        for (unsigned int i = 0; i < lights.size(); i++) {
-            model = glm::mat4(1.0f);
-            model = glm::translate(model, glm::vec3(lights[i].position));
-            model = glm::scale(model, glm::vec3(0.25f));
-            lightBoxPipeline.setMat4("model", model);
-            lightBoxPipeline.setVec3("lightColor", lights[i].color);
-
-            glBindVertexArray(cubeBuffer.VAO);
-            glDrawArrays(GL_TRIANGLES, 0, 36);
-        }
-        handleImGui();
-
-        SDL_GL_SwapWindow(window);
+        glBindVertexArray(cubeBuffer.VAO);
+        glDrawArrays(GL_TRIANGLES, 0, 36);
     }
 }
 
 void ClusteredEngine::handleImGui()
 {
-    ImGui_ImplOpenGL3_NewFrame();
-    ImGui_ImplSDL2_NewFrame();
-    ImGui::NewFrame();
-    ImGuizmo::BeginFrame();
-
-    ImGui::Begin("Info");
     if (ImGui::CollapsingHeader("Scene Info")) {
         ImGui::SliderFloat("Bias", &bias, 0.01f, 1.0f);
         ImGui::SliderFloat("Scale", &scale, 0.5f, 10.0f);
@@ -201,8 +172,4 @@ void ClusteredEngine::handleImGui()
         ImGui::SliderFloat3("Direction", (float*)&directionalLight.direction, -1.0f, 1.0f);
         ImGui::SliderFloat3("Color", (float*)&directionalLight.diffuse, 0.0f, 1.0f);
     }
-    ImGui::End();
-
-    ImGui::Render();
-    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }

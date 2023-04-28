@@ -3,7 +3,6 @@
 #include <random>
 
 void ComputeEngine::init_resources() {
-    camera = Camera(glm::vec3(0, 0, -1.0f), glm::vec3(0.0, 1.0f, 0.0f), 90.0, 0.0);
     computePipeline = ComputeShader("compute/basic.glsl");
 
     imgTexture = glutil::createTexture(imgWidth, imgHeight, GL_FLOAT, GL_RGBA, GL_RGBA32F, nullptr);
@@ -58,83 +57,70 @@ void ComputeEngine::createValues() {
     plane.specular = glm::vec3(color_dist(mt), color_dist(mt), color_dist(mt));
 }
 
-void ComputeEngine::run() {
-    bool closedWindow = false;
+void ComputeEngine::render(std::vector<Model>& objs) {
+    float currentFrame = static_cast<float>(SDL_GetTicks());
 
-    while (!closedWindow) {
-        handleBasicRenderLoop();
-        float currentFrame = static_cast<float>(SDL_GetTicks());
+    glm::mat4 projection = glm::perspective(glm::radians(camera->Zoom), (float)imgWidth/ (float)imgHeight, 0.1f, 100.0f);
+    float near = -5.0f, far = 25.0f;
+    projection = glm::ortho(-10.0f, 10.0f, -10.0f, 10.0f, near, far);
+    glm::mat4 inverseView = glm::inverse(projection * camera->getViewMatrix());
 
-        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)imgWidth/ (float)imgHeight, 0.1f, 100.0f);
-        float near = -5.0f, far = 25.0f;
-        projection = glm::ortho(-10.0f, 10.0f, -10.0f, 10.0f, near, far);
-        glm::mat4 inverseView = glm::inverse(projection * camera.getViewMatrix());
+    computePipeline.use();
+    computePipeline.setFloat("t", currentFrame * 0.01);
+    computePipeline.setMat4("inverseView", inverseView);
 
-        computePipeline.use();
-        computePipeline.setFloat("t", currentFrame * 0.01);
-        computePipeline.setMat4("inverseView", inverseView);
+    for (int i = 0; i < 4; i++) {
+        std::string name = "pointLights[" + std::to_string(i) + "]";
 
-        for (int i = 0; i < 4; i++) {
-            std::string name = "pointLights[" + std::to_string(i) + "]";
-
-            computePipeline.setVec3(name + ".position", pointLights[i].position);
-            computePipeline.setVec3(name + ".ambient", pointLights[i].ambient);
-            computePipeline.setVec3(name + ".specular", pointLights[i].specular);
-            computePipeline.setVec3(name + ".diffuse", pointLights[i].diffuse);
-        }
-
-        for (int i = 0; i < 25; i++) {
-            std::string name = "spheres[" + std::to_string(i) + "]";
-
-            computePipeline.setVec3(name + ".origin", spheres[i].origin);
-            computePipeline.setVec3(name + ".albedo", spheres[i].albedo);
-            computePipeline.setVec3(name + ".specular", spheres[i].specular);
-            computePipeline.setFloat(name + ".radius", spheres[i].radius);
-        }
-        std::string name = "plane";
-        computePipeline.setVec3(name + ".point", plane.point);
-        computePipeline.setVec3(name + ".normal", plane.normal);
-        computePipeline.setVec3(name + ".albedo", plane.albedo);
-        computePipeline.setVec3(name + ".specular", plane.specular);
-
-        name = "dirLight";
-        computePipeline.setVec3(name + ".direction", dirLight.direction);
-        computePipeline.setVec3(name + ".diffuse", dirLight.diffuse);
-        computePipeline.setVec3(name + ".ambient", dirLight.ambient);
-        computePipeline.setVec3(name + ".specular", dirLight.specular);
-
-        computePipeline.setInt("numReflections", numReflections);
-        computePipeline.setInt("shininess", shininess);
-
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
-        computePipeline.setInt("cubemap", 1);
-
-        glDispatchCompute((unsigned int) imgWidth/8, (unsigned int) imgHeight/4, 1);
-
-        glClearColor(1.0, 0.0, 0.0, 1.0);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-
-        renderPipeline.use();
-
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, imgTexture);
-        renderPipeline.setInt("texture1", 0);
-        glBindVertexArray(quadBuffer.VAO);
-        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-
-        handleImGui();
-
-        SDL_GL_SwapWindow(window);
+        computePipeline.setVec3(name + ".position", pointLights[i].position);
+        computePipeline.setVec3(name + ".ambient", pointLights[i].ambient);
+        computePipeline.setVec3(name + ".specular", pointLights[i].specular);
+        computePipeline.setVec3(name + ".diffuse", pointLights[i].diffuse);
     }
+
+    for (int i = 0; i < 25; i++) {
+        std::string name = "spheres[" + std::to_string(i) + "]";
+
+        computePipeline.setVec3(name + ".origin", spheres[i].origin);
+        computePipeline.setVec3(name + ".albedo", spheres[i].albedo);
+        computePipeline.setVec3(name + ".specular", spheres[i].specular);
+        computePipeline.setFloat(name + ".radius", spheres[i].radius);
+    }
+    std::string name = "plane";
+    computePipeline.setVec3(name + ".point", plane.point);
+    computePipeline.setVec3(name + ".normal", plane.normal);
+    computePipeline.setVec3(name + ".albedo", plane.albedo);
+    computePipeline.setVec3(name + ".specular", plane.specular);
+
+    name = "dirLight";
+    computePipeline.setVec3(name + ".direction", dirLight.direction);
+    computePipeline.setVec3(name + ".diffuse", dirLight.diffuse);
+    computePipeline.setVec3(name + ".ambient", dirLight.ambient);
+    computePipeline.setVec3(name + ".specular", dirLight.specular);
+
+    computePipeline.setInt("numReflections", numReflections);
+    computePipeline.setInt("shininess", shininess);
+
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
+    computePipeline.setInt("cubemap", 1);
+
+    glDispatchCompute((unsigned int) imgWidth/8, (unsigned int) imgHeight/4, 1);
+
+    glClearColor(1.0, 0.0, 0.0, 1.0);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+
+    renderPipeline.use();
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, imgTexture);
+    renderPipeline.setInt("texture1", 0);
+    glBindVertexArray(quadBuffer.VAO);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 }
 
 void ComputeEngine::handleImGui()
 {
-    ImGui_ImplOpenGL3_NewFrame();
-    ImGui_ImplSDL2_NewFrame();
-    ImGui::NewFrame();
-
     ImGui::Begin("Info");
     if (ImGui::CollapsingHeader("Spheres")) {
         for (int i = 0; i < 15; i++) {
@@ -175,15 +161,8 @@ void ComputeEngine::handleImGui()
         ImGui::SliderFloat3("Specular", (float*)&plane.specular, 0.0, 1.0);
     }
     if (ImGui::CollapsingHeader("Camera Info")) {
-        ImGui::SliderFloat3("Front", (float*)&camera.Front, -1.0, 1.0);
-        ImGui::SliderFloat3("Position", (float*)&camera.Position, -100.0, 100.0);
-        ImGui::SliderFloat3("Up", (float*)&camera.Up, -100.0, 100.0);
-
         ImGui::SliderInt("Num of Reflections", (int*)&numReflections, 1, 10);
         ImGui::SliderInt("Shininess", (int*)&shininess, 5, 100);
     }
     ImGui::End();
-    
-    ImGui::Render();
-    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }

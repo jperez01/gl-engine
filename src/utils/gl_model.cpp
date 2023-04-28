@@ -193,6 +193,7 @@ Mesh Model::processMesh(aiMesh *mesh, const aiScene *scene) {
     std::vector<VertexBoneData> boneData;
     std::vector<BoneInfo> boneInfo;
     std::unordered_map<std::string, unsigned int> nameToIndex;
+    BoundingBox someAABB;
 
     for (unsigned int i = 0; i < mesh->mNumVertices; i++) {
         Vertex vertex;
@@ -204,21 +205,21 @@ Mesh Model::processMesh(aiMesh *mesh, const aiScene *scene) {
         vector.z = mesh->mVertices[i].z;
         vertex.Position = vector;
 
-        if (!aabb.isInitialized) {
-            aabb.isInitialized = true;
-            aabb.minPoint = glm::vec4(vector, 1.0f);
-            aabb.maxPoint = glm::vec4(vector, 1.0f);
-        } else {
-            aabb.minPoint = glm::vec4(
-                std::min(aabb.minPoint.x, vector.x),
-                std::min(aabb.minPoint.y, vector.y),
-                std::min(aabb.minPoint.z, vector.z),
+        if (i == 0) {
+            someAABB.minPoint = glm::vec4(vector, 1.0f);
+            someAABB.maxPoint = glm::vec4(vector, 1.0f);
+        }
+        else {
+            someAABB.minPoint = glm::vec4(
+                std::min(someAABB.minPoint.x, vector.x),
+                std::min(someAABB.minPoint.y, vector.y),
+                std::min(someAABB.minPoint.z, vector.z),
                 1.0f
             );
-            aabb.maxPoint = glm::vec4(
-                std::max(aabb.maxPoint.x, vector.x),
-                std::max(aabb.maxPoint.y, vector.y),
-                std::max(aabb.maxPoint.z, vector.z),
+            someAABB.maxPoint = glm::vec4(
+                std::max(someAABB.maxPoint.x, vector.x),
+                std::max(someAABB.maxPoint.y, vector.y),
+                std::max(someAABB.maxPoint.z, vector.z),
                 1.0f
             );
         }
@@ -250,6 +251,26 @@ Mesh Model::processMesh(aiMesh *mesh, const aiScene *scene) {
             vertex.TexCoords = glm::vec2(0.0f, 0.0f);
         }
         vertices.push_back(vertex);
+    }
+
+    if (!aabb.isInitialized) {
+        aabb.isInitialized = true;
+        aabb.minPoint = someAABB.minPoint;
+        aabb.maxPoint = someAABB.maxPoint;
+    }
+    else {
+        aabb.minPoint = glm::vec4(
+            std::min(someAABB.minPoint.x, aabb.minPoint.x),
+            std::min(someAABB.minPoint.y, aabb.minPoint.y),
+            std::min(someAABB.minPoint.z, aabb.minPoint.z),
+            1.0f
+        );
+        aabb.maxPoint = glm::vec4(
+            std::max(someAABB.maxPoint.x, aabb.maxPoint.x),
+            std::max(someAABB.maxPoint.y, aabb.maxPoint.y),
+            std::max(someAABB.maxPoint.z, aabb.maxPoint.z),
+            1.0f
+        );
     }
 
     if(mesh->HasBones()) {
@@ -305,12 +326,15 @@ Mesh Model::processMesh(aiMesh *mesh, const aiScene *scene) {
     textures.insert(textures.end(), roughnessMaps.begin(), roughnessMaps.end());
 
     Mesh newMesh;
+    newMesh.model_matrix = glm::mat4(1.0f);
     newMesh.indices = indices;
     newMesh.vertices = vertices;
     newMesh.texture_paths = textures;
+
     newMesh.bone_data = boneData;
     newMesh.bone_info = boneInfo;
     newMesh.boneName_To_Index = nameToIndex;
+
     glm::mat4 globalTransform = glm::mat4(1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0);
     newMesh.globalInverse = glm::inverse(globalTransform);
     

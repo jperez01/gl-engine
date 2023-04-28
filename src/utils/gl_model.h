@@ -33,6 +33,9 @@ struct Mesh {
 
     glm::mat4 globalInverse;
 
+    glm::mat4 model_matrix;
+    BoundingBox aabb;
+
     AllocatedBuffer buffer;
     unsigned int SSBO;
 

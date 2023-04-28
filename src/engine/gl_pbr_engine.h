@@ -7,15 +7,13 @@
 class PBREngine : public GLEngine {
 public:
     void init_resources();
-    void run();
+    void render(std::vector<Model> &objs);
     void handleEvents();
     void handleImGui();
 
     void createSphere();
     void createIrradianceMap();
     void createPrefilter();
-
-    void drawModels(Shader& shader, bool skipTextures);
 
 private:
     AllocatedBuffer sphereBuffer;

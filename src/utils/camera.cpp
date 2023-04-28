@@ -26,6 +26,13 @@ glm::mat4 Camera::getViewMatrix() {
     return glm::lookAt(Position, Position + Front, Up);
 }
 
+glm::mat4 Camera::getProjectionMatrix(ProjectionType type) {
+    if (type == PERSPECTIVE)
+        return glm::perspective(glm::radians(Zoom), aspect, zNear, zFar);
+    else
+        return glm::ortho(-100.0f, 100.0f, -100.0f, 100.0f, 0.1f, 100.0f);
+}
+
 void Camera::processKeyboard(Camera_Movement direction, float deltaTime) {
     float velocity = MovementSpeed * deltaTime;
     glm::vec3 position = Position;

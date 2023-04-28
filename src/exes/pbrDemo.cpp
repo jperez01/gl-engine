@@ -1,13 +1,15 @@
+#include "core/application.h"
 #include "engine/gl_pbr_engine.h"
 
 int main(int argc, char* argv[]) {
     PBREngine engine;
+    Application app(&engine);
 
-    engine.init();
+    app.init();
 
-    engine.run();
+    app.mainLoop();
 
-    engine.cleanup();
-    
+    app.cleanup();
+
     return 0;
 }

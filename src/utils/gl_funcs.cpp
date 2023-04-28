@@ -134,6 +134,30 @@ namespace glutil {
         }
     }
 
+    Texture loadSomeTexture(std::string path) {
+        Texture texture;
+        int width, height, nrComponents;
+
+        unsigned char* data = stbi_load(path.c_str(), &width, &height, &nrComponents, 0);
+        if (data) {
+            GLenum dataType = GL_UNSIGNED_BYTE;
+            unsigned int textureID = createTexture(width, height, dataType, nrComponents, data);
+            
+            texture.id = textureID;
+            texture.height = height;
+            texture.width = width;
+            texture.nrComponents = nrComponents;
+
+            return texture;
+        }
+        else {
+            std::cout << "Texture failed to load at path: " << path << std::endl;
+            stbi_image_free(data);
+
+            return texture;
+        }
+    }
+
     unsigned int createTexture3D(int width, int height, int depth, GLenum storageFormat) {
         unsigned int textureID;
 
@@ -173,23 +197,23 @@ namespace glutil {
         return textureID;
     }
 
-    unsigned int createTexture(int width, int height, GLenum dataType, GLenum format, GLenum storageFormat, void* data) {
+    unsigned int createTexture(int width, int height, GLenum dataType, GLenum format, GLenum storageFormat, void* data, int levels) {
         unsigned int textureID;
         glCreateTextures(GL_TEXTURE_2D, 1, &textureID);
 
-        glTextureStorage2D(textureID, 4, storageFormat, width, height);
+        glTextureStorage2D(textureID, levels, storageFormat, width, height);
         glTextureSubImage2D(textureID, 0, 0, 0, width, height, format, dataType, data);
 
         glTextureParameteri(textureID, GL_TEXTURE_WRAP_S, GL_REPEAT);
         glTextureParameteri(textureID, GL_TEXTURE_WRAP_T, GL_REPEAT);
         glTextureParameteri(textureID, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
         glTextureParameteri(textureID, GL_TEXTURE_MAG_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-        glGenerateTextureMipmap(textureID);
+        if (levels > 1) glGenerateTextureMipmap(textureID);
 
         return textureID;
     }
 
-    unsigned int createTexture(int width, int height, GLenum dataType, int nrComponents, unsigned char* data) {
+    unsigned int createTexture(int width, int height, GLenum dataType, int nrComponents, unsigned char* data, int levels) {
         unsigned int textureID;
         glCreateTextures(GL_TEXTURE_2D, 1, &textureID);
 
@@ -209,14 +233,14 @@ namespace glutil {
             storageFormat = GL_RGBA8;
         }
 
-        glTextureStorage2D(textureID, 4, storageFormat, width, height);
+        glTextureStorage2D(textureID, levels, storageFormat, width, height);
         glTextureSubImage2D(textureID, 0, 0, 0, width, height, format, dataType, data);
 
         glTextureParameteri(textureID, GL_TEXTURE_WRAP_S, GL_REPEAT);
         glTextureParameteri(textureID, GL_TEXTURE_WRAP_T, GL_REPEAT);
         glTextureParameteri(textureID, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
         glTextureParameteri(textureID, GL_TEXTURE_MAG_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-        glGenerateTextureMipmap(textureID);
+        if (levels > 1) glGenerateTextureMipmap(textureID);
 
         return textureID;
     }

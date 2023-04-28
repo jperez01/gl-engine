@@ -10,7 +10,7 @@
 class RenderEngine : public GLEngine {
     public:
         void init_resources();
-        void run();
+        void render(std::vector<Model>& objs);
         void handleImGui();
     
     private:
@@ -60,9 +60,8 @@ class RenderEngine : public GLEngine {
         PointLight pointLights[4];
         DirLight directionLight;
 
-        void handleEvents();
-        void checkFrustum();
-        void renderScene(Shader& shader, bool skipTextures = false);
+        void checkFrustum(std::vector<Model> &objs);
+        void renderScene(std::vector<Model> &objs, Shader& shader, bool skipTextures = false);
 
         void drawCascadeVolumeVisualizers(const std::vector<glm::mat4>& lightMatrices, Shader* shader);
 
