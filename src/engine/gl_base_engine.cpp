@@ -24,7 +24,7 @@ void GLEngine::drawModels(std::vector<Model>& models, Shader& shader, bool skipT
         for (int j = 0; j < model.meshes.size(); j++) {
             Mesh& mesh = model.meshes[j];
 
-            glm::mat4 finalModelMatrix = model.model_matrix * mesh.model_matrix;
+            glm::mat4 finalModelMatrix = mesh.model_matrix * model.model_matrix;
             shader.setMat4("model", finalModelMatrix);
 
             if (!skipTextures) {
@@ -71,7 +71,7 @@ void GLEngine::drawModels(std::vector<Model>& models, Shader& shader, bool skipT
 
 void GLEngine::loadModelData(Model& model) {
     for (Texture& texture : model.textures_loaded) {
-        int levels = (texture.type == "texture_normal") ? 1 : 4;
+        int levels = (texture.type == "texture_normal" || texture.width < 16) ? 1 : 4;
         unsigned int textureID = glutil::createTexture(texture.width, texture.height,
             GL_UNSIGNED_BYTE, texture.nrComponents, texture.data, levels);
         

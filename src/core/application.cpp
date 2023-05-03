@@ -5,6 +5,22 @@ Application::Application(GLEngine* renderer) {
     mRenderer = renderer;
 }
 
+void GLAPIENTRY
+MessageCallback(GLenum source,
+    GLenum type,
+    GLuint id,
+    GLenum severity,
+    GLsizei length,
+    const GLchar* message,
+    const void* userParam)
+{
+
+    fprintf(stderr, "GL CALLBACK: %s type = 0x%x, severity = 0x%x, message = %s\n",
+        (type == GL_DEBUG_TYPE_ERROR ? "** GL ERROR **" : ""),
+        type, severity, message);
+
+}
+
 void Application::init()
 {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_GAMECONTROLLER) != 0) {
@@ -35,6 +51,20 @@ void Application::init()
     gladLoadGLLoader(SDL_GL_GetProcAddress);
     SDL_GL_SetSwapInterval(1);
 
+    GLint numExtensions = 0;
+    glGetIntegerv(GL_NUM_EXTENSIONS, &numExtensions);
+    for (int i = 0; i < numExtensions; i++) {
+        std::string extension = (const char*)glGetStringi(GL_EXTENSIONS, i);
+        std::cout << extension << "\n";
+        if (extension == "GL_ARB_bindless_texture") {
+            std::cout << "Bindless Textures supported" << "\n";
+            break;
+        }
+    }
+
+    glEnable(GL_DEBUG_OUTPUT);
+    glDebugMessageCallback(MessageCallback, 0);
+
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGui_ImplSDL2_InitForOpenGL(window, gl_context);
@@ -59,6 +89,8 @@ void Application::init()
     newModel.model_matrix = model;
     mRenderer->loadModelData(newModel);
     usableObjs.push_back(newModel);
+
+    mRenderer->handleObjs(usableObjs);
 
     mEditor.renderer = mRenderer;
     mEditor.objs = &usableObjs;

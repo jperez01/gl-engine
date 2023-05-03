@@ -240,6 +240,7 @@ namespace glutil {
         glTextureParameteri(textureID, GL_TEXTURE_WRAP_T, GL_REPEAT);
         glTextureParameteri(textureID, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
         glTextureParameteri(textureID, GL_TEXTURE_MAG_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+
         if (levels > 1) glGenerateTextureMipmap(textureID);
 
         return textureID;

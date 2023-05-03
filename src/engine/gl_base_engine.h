@@ -68,6 +68,7 @@ class GLEngine {
         virtual void init_resources();
         virtual void render(std::vector<Model> &objs) = 0;
         virtual void handleImGui() = 0;
+        virtual void handleObjs(std::vector<Model> &objs) {}
 
         void loadModelData(Model& model);
 
