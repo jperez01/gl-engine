@@ -82,7 +82,7 @@ void SceneEditor::renderDebug(Camera& camera)
 void SceneEditor::renderAsList(Model& model) {
 	ImVec4 color(0.8f, 0.8f, 0.8f, 1.0f);
 
-	bool open = ImGui::TreeNodeEx("", ImGuiTreeNodeFlags_OpenOnArrow);
+	bool open = ImGui::TreeNodeEx("##Model", ImGuiTreeNodeFlags_OpenOnArrow);
 	ImGui::SameLine();
 	UI::drawIcon(1, 5, 0, 1.0f);
 	ImGui::SameLine();

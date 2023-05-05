@@ -6,12 +6,14 @@ add_library(gl_tools
 
     ui/editor.cpp
 
+    utils/material.cpp
     utils/gl_funcs.cpp
     utils/camera.cpp
     utils/gl_model.cpp
     utils/shader.cpp
     utils/gl_types.cpp
-    utils/gl_compute.cpp "ui/ui.cpp")
+    utils/gl_compute.cpp 
+    ui/ui.cpp)
 
 add_executable(gl_engine
     main.cpp
@@ -37,6 +39,10 @@ add_executable(voxel_cone_tracing
     exes/voxelDemo.cpp
     engine/gl_voxel_eng.cpp)
 
+add_executable(indirect_rendering
+    exes/indirectDemo.cpp
+    engine/gl_indirect_eng.cpp)
+
 target_include_directories(gl_tools PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${PROJECT_SOURCE_DIR}/include)
@@ -47,11 +53,9 @@ target_include_directories(gl_engine PUBLIC
 
 find_package(assimp CONFIG REQUIRED)
 
-set (GLFW_LIB "${PROJECT_SOURCE_DIR}/libs/GLFW/glfw3.lib")
 set (ASSIMP_LIB "${PROJECT_SOURCE_DIR}/libs/assimp/assimp.lib")
 
-
-target_link_libraries(gl_tools PUBLIC glad glm stb_image imgui imGuizmo sdl2 ${GLFW_LIB} assimp::assimp)
+target_link_libraries(gl_tools PUBLIC glad glm stb_image imgui imGuizmo sdl2 assimp::assimp)
 
 target_link_libraries(gl_engine gl_tools)
 target_link_libraries(compute_engine gl_tools)
@@ -59,3 +63,4 @@ target_link_libraries(deferred_engine gl_tools)
 target_link_libraries(pbr_engine gl_tools)
 target_link_libraries(clustered_engine gl_tools)
 target_link_libraries(voxel_cone_tracing gl_tools)
+target_link_libraries(indirect_rendering gl_tools)

@@ -326,6 +326,7 @@ Mesh Model::processMesh(aiMesh *mesh, const aiScene *scene) {
     textures.insert(textures.end(), roughnessMaps.begin(), roughnessMaps.end());
 
     Mesh newMesh;
+    newMesh.aabb = someAABB;
     newMesh.model_matrix = glm::mat4(1.0f);
     newMesh.indices = indices;
     newMesh.vertices = vertices;
