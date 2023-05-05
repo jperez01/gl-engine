@@ -6,12 +6,14 @@ add_library(gl_tools
 
     ui/editor.cpp
 
+    utils/material.cpp
     utils/gl_funcs.cpp
     utils/camera.cpp
     utils/gl_model.cpp
     utils/shader.cpp
     utils/gl_types.cpp
-    utils/gl_compute.cpp "ui/ui.cpp")
+    utils/gl_compute.cpp 
+    ui/ui.cpp)
 
 add_executable(gl_engine
     main.cpp

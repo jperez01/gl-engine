@@ -288,28 +288,6 @@ void RenderEngine::handleImGui() {
         ImGui::SliderFloat3("Diffuse", (float*)&directionLight.diffuse, 0.0, 1.0);
     }
 
-    /*
-    if (ImGui::CollapsingHeader("Models")) {
-        ImGui::InputText("Model Path", &path);
-        if (ImGui::Button("Load Model")) {
-            std::string chosenPath = "../../resources/objects/" + path;
-            std::thread(&RenderEngine::async_load_model, this, chosenPath).detach();
-        }
-
-        if (usableObjs.size() != 0) {
-            ImGui::ListBoxHeader("Models");
-            for (size_t i = 0; i < usableObjs.size(); i++) {
-                std::string selectName = "Object " + std::to_string(i);
-                if (ImGui::Selectable(selectName.c_str())) {
-                    chosenObjIndex = i;
-                }
-            }
-            ImGui::ListBoxFooter();
-            ImGui::SliderInt("Animation", &chosenAnimation, 0, usableObjs[chosenObjIndex].numAnimations-1);
-        }
-    }
-    */
-
     if (ImGui::CollapsingHeader("Extras")) {
         ImGui::RadioButton("Using Radar", camera->shouldUseRadar);
         ImGui::SliderFloat("Shininess", &shininess, 1, 200);
@@ -327,13 +305,6 @@ void RenderEngine::handleImGui() {
 
     glm::mat4 projection = glm::perspective(glm::radians(camera->Zoom), (float)WINDOW_WIDTH/ (float)WINDOW_HEIGHT, 0.1f, 100.0f);
     glm::mat4 view = camera->getViewMatrix();
-
-    /*
-    ImGuizmo::SetOrthographic(false);
-    ImGuizmo::SetRect(0, 0, io.DisplaySize.x, io.DisplaySize.y);
-    ImGuizmo::Manipulate(glm::value_ptr(view), glm::value_ptr(projection), operation,
-        ImGuizmo::LOCAL, glm::value_ptr(usableObjs[chosenObjIndex].model_matrix));
-    */
 }
 
 void RenderEngine::drawCascadeVolumeVisualizers(const std::vector<glm::mat4>& lightMatrices, Shader* shader)

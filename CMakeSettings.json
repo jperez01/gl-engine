@@ -13,7 +13,7 @@
       "variables": [
         {
           "name": "sdl2_DIR",
-          "value": "C:/Users/jpabl/Documents/development/SDL2-2.26.2",
+          "value": "C:/Users/jpabl/dev/libraries/SDL2-2.26.2",
           "type": "PATH"
         },
         {
@@ -36,7 +36,7 @@
       "variables": [
         {
           "name": "sdl2_DIR",
-          "value": "C:/Users/jpabl/Documents/development/SDL2-2.26.2",
+          "value": "C:/Users/jpabl/dev/libraries/SDL2-2.26.2",
           "type": "PATH"
         },
         {
