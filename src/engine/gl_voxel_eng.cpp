@@ -87,7 +87,7 @@ void VoxelEngine::render(std::vector<Model>& objs) {
         glClear(GL_DEPTH_BUFFER_BIT);
 
         if (cullFront) glCullFace(GL_FRONT);
-        drawModels(objs, cascadeMapPipeline, true);
+        drawModels(objs, cascadeMapPipeline, SKIP_TEXTURES);
         glCullFace(GL_BACK);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glDisable(GL_DEPTH_CLAMP);

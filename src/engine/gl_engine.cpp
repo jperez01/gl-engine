@@ -149,7 +149,7 @@ void RenderEngine::render(std::vector<Model>& objs) {
             depthCubemapPipeline.setVec3("lightPos", lightPos);
             depthCubemapPipeline.setFloat("far_plane", far);
 
-            drawModels(objs, depthCubemapPipeline, true);
+            drawModels(objs, depthCubemapPipeline, SKIP_TEXTURES);
 
             depthCubemapPipeline.setMat4("model", planeModel);
             glBindVertexArray(planeBuffer.VAO);
@@ -249,7 +249,7 @@ void RenderEngine::checkFrustum(std::vector<Model>& objs) {
 }
 
 void RenderEngine::renderScene(std::vector<Model>& objs, Shader& shader, bool skipTextures) {
-    drawModels(objs, shader, skipTextures);
+    drawModels(objs, shader, skipTextures & SKIP_TEXTURES);
 
     glm::mat4 planeModel = glm::mat4(1.0f);
     planeModel = glm::translate(planeModel, glm::vec3(0.0, -2.0, 0.0));
