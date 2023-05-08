@@ -54,7 +54,7 @@ target_include_directories(gl_engine PUBLIC
 # Assimp from vcpkg or other package manager
 find_package(assimp CONFIG REQUIRED)
 # Assimp from source
-set (ASSIMP_LIB "${PROJECT_SOURCE_DIR}/libs/assimp/assimp.lib")
+
 
 target_link_libraries(gl_tools PUBLIC glad glm stb_image imgui imGuizmo sdl2 assimp::assimp)
 

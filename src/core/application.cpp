@@ -83,6 +83,9 @@ void Application::init()
     mRenderer->camera = &camera;
 
     mRenderer->init_resources();
+
+    // asyncLoadModel("../../resources/objects/sponzaBasic/glTF/Sponza.gltf", GLTF);
+
     Model newModel("../../resources/objects/sponzaBasic/glTF/Sponza.gltf", GLTF);
     glm::mat4 model = glm::mat4(1.0f);
     model = glm::scale(model, glm::vec3(0.1f));
@@ -190,8 +193,8 @@ void Application::handleEvents()
 
 void Application::handleImportedObjs()
 {
-    if (importedObjs.size() != 0) {
-        Model model = importedObjs[0];
+    if (!importedObjs.empty()) {
+        Model model = importedObjs[importedObjs.size() - 1];
         mRenderer->loadModelData(model);
 
         importedObjs.pop_back();
@@ -199,9 +202,9 @@ void Application::handleImportedObjs()
     }
 }
 
-void Application::async_load_model(std::string path)
+void Application::asyncLoadModel(std::string path, FileType type)
 {
-    Model newModel(path);
+    Model newModel(path, type);
 
     importedObjs.push_back(newModel);
 }

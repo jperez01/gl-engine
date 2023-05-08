@@ -3,6 +3,8 @@
 #include "glm/gtx/component_wise.hpp"
 
 void VoxelEngine::init_resources() {
+    camera->zNear = cameraNearPlane;
+    camera->zFar = cameraFarPlane;
 
     voxelGridPipeline = Shader("coneTracing/voxel.vs", "coneTracing/voxel.fs", "coneTracing/voxel.gs");
     renderPassPipeline = Shader("coneTracing/colorPass.vs", "coneTracing/colorPass.fs");
@@ -195,7 +197,7 @@ void VoxelEngine::createVoxelGrid(std::vector<Model> &objs) {
         voxelGridPipeline.setInt("voxelTexture", 0);
         glBindImageTexture(0, voxelGridTexture, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA8);
 
-        drawModels(objs, voxelGridPipeline);
+        drawModels(objs, voxelGridPipeline, SKIP_CULLING);
         glGenerateTextureMipmap(voxelGridTexture);
         
         
