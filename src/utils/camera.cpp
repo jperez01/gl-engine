@@ -44,6 +44,8 @@ void Camera::processKeyboard(Camera_Movement direction, float deltaTime) {
         Position -= Right * velocity;
     if (direction == RIGHT)
         Position += Right * velocity;
+
+    if (!shouldUseRadar) updateFrustum();
 }
 
 void Camera::processMouseMovement(float xoffset, float yoffset, 

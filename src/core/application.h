@@ -20,7 +20,7 @@ private:
     void handleClick(double xposIn, double yposIn);
     void checkIntersection(glm::vec4& origin, glm::vec4& direction, glm::vec4& inverse_dir);
 
-    void async_load_model(std::string path);
+    void asyncLoadModel(std::string path, FileType type = OBJ);
 
 	GLEngine* mRenderer;
     SceneEditor mEditor;

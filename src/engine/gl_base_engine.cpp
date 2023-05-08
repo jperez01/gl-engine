@@ -17,26 +17,34 @@
 void GLEngine::init_resources() {}
 void render(std::vector<Model>& objs) {}
 
-void GLEngine::drawModels(std::vector<Model>& models, Shader& shader, bool skipTextures) {
+void GLEngine::drawModels(std::vector<Model>& models, Shader& shader, unsigned char drawOptions) {
+    bool shouldSkipTextures = drawOptions & SKIP_TEXTURES;
+    bool shouldSkipCulling = drawOptions & SKIP_CULLING;
+
     for (Model& model : models) {
-        glm::vec4 transformedMax = model.model_matrix * model.aabb.maxPoint;
-        glm::vec4 transformedMin = model.model_matrix * model.aabb.minPoint;
-        bool shouldDraw = camera->isInsideFrustum(transformedMax, transformedMin);
-        if (!shouldDraw) continue;
+        if (!shouldSkipCulling) {
+            glm::vec4 transformedMax = model.model_matrix * model.aabb.maxPoint;
+            glm::vec4 transformedMin = model.model_matrix * model.aabb.minPoint;
+            bool shouldDraw = camera->isInsideFrustum(transformedMax, transformedMin);
+            if (!shouldDraw) continue;
+        }
         
         for (int j = 0; j < model.meshes.size(); j++) {
             Mesh& mesh = model.meshes[j];
 
             glm::mat4 finalModelMatrix = mesh.model_matrix * model.model_matrix;
-            glm::vec4 meshMin = finalModelMatrix * mesh.aabb.minPoint;
-            glm::vec4 meshMax = finalModelMatrix * mesh.aabb.maxPoint;
-            shouldDraw = camera->isInsideFrustum(meshMax, meshMin);
-            if (!shouldDraw) continue;
+            if (!shouldSkipCulling) {
+                glm::vec4 meshMin = finalModelMatrix * mesh.aabb.minPoint;
+                glm::vec4 meshMax = finalModelMatrix * mesh.aabb.maxPoint;
+                bool shouldDraw = camera->isInsideFrustum(meshMax, meshMin);
+                if (!shouldDraw) continue;
+            }
 
             shader.setMat4("model", finalModelMatrix);
-            if (!skipTextures) {
+            if (!shouldSkipTextures) {
+                Material material = model.materials_loaded[mesh.materialIndex];
 
-                if (mesh.textures.size() != 4) {
+                if (material.textures.size() != 4) {
                     shader.setBool("noMetallicMap", true);
                     shader.setBool("noNormalMap", true);
                 } else {
@@ -44,16 +52,16 @@ void GLEngine::drawModels(std::vector<Model>& models, Shader& shader, bool skipT
                     shader.setBool("noNormalMap", false);
                 }
 
-                for (unsigned int i = 0; i < mesh.textures.size(); i++) {
+                for (unsigned int i = 0; i < material.textures.size(); i++) {
                     glActiveTexture(GL_TEXTURE0 + i);
 
                     string number;
-                    string name = mesh.textures[i].type;
+                    string name = material.textures[i].type;
 
                     string key = name;
                     shader.setInt(key.c_str(), i);
 
-                    glBindTexture(GL_TEXTURE_2D, mesh.textures[i].id);
+                    glBindTexture(GL_TEXTURE_2D, material.textures[i].id);
                 }
                 glActiveTexture(GL_TEXTURE0);
 
@@ -77,7 +85,8 @@ void GLEngine::drawModels(std::vector<Model>& models, Shader& shader, bool skipT
 }
 
 void GLEngine::loadModelData(Model& model) {
-    for (Texture& texture : model.textures_loaded) {
+    for (auto& info : model.textures_loaded) {
+        Texture& texture = info.second;
         int levels = (texture.type == "texture_normal" || texture.width < 16) ? 1 : 4;
         unsigned int textureID = glutil::createTexture(texture.width, texture.height,
             GL_UNSIGNED_BYTE, texture.nrComponents, texture.data, levels);
@@ -85,6 +94,13 @@ void GLEngine::loadModelData(Model& model) {
         texture.id = textureID;
 
         stbi_image_free(texture.data);
+    }
+
+    for (Material& material : model.materials_loaded) {
+        for (std::string& path : material.texture_paths) {
+            Texture& texture = model.textures_loaded[path];
+            material.textures.push_back(texture);
+        }
     }
 
     for (Mesh& mesh : model.meshes) {
@@ -95,15 +111,6 @@ void GLEngine::loadModelData(Model& model) {
             glCreateBuffers(1, &mesh.SSBO);
             glNamedBufferStorage(mesh.SSBO, sizeof(VertexBoneData) * mesh.bone_data.size(),
                 mesh.bone_data.data(), GL_DYNAMIC_STORAGE_BIT);
-        }
-
-        for (std::string& path : mesh.texture_paths) {
-            for (unsigned int j = 0; j < model.textures_loaded.size(); j++) {
-                if (std::strcmp(model.textures_loaded[j].path.data(), path.c_str()) == 0) {
-                    mesh.textures.push_back(model.textures_loaded[j]);
-                    break;
-                }
-            }
         }
     }
 }

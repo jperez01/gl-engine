@@ -71,8 +71,6 @@ void SceneEditor::render(Camera& camera)
 		}
 	}
 	ImGui::End();
-
-	ImGui::ShowDemoWindow();
 }
 
 void SceneEditor::renderDebug(Camera& camera)

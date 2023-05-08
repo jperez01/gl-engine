@@ -11,7 +11,8 @@ struct Material {
 	void updateUniforms(Shader& shader);
 	void updateUniforms();
 
-	std::vector<Texture*> textures;
+	std::vector<Texture> textures;
+	std::vector<std::string> texture_paths;
 	Shader* shader;
 
 	std::unordered_map<std::string, int> uniformInts;

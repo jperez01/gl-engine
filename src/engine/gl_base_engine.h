@@ -19,6 +19,11 @@
 #include "imgui/imgui_stdlib.h"
 #include "ImGuizmo.h"
 
+enum DrawOptions {
+    SKIP_TEXTURES = (1u << 0),
+    SKIP_CULLING = (1u << 1)
+};
+
 struct EnviornmentCubemap {
     AllocatedBuffer buffer;
     unsigned int texture;
@@ -81,6 +86,6 @@ class GLEngine {
         float animationTime = 0.0f;
         int chosenAnimation = 0;
 
-        void drawModels(std::vector<Model> &models, Shader& shader, bool skipTextures = false);
+        void drawModels(std::vector<Model> &models, Shader& shader, unsigned char drawOptions = 0);
         void drawPlane();
 };
