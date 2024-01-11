@@ -58,7 +58,9 @@ struct EnviornmentCubemap {
 struct ScreenQuad {
     AllocatedBuffer buffer;
 
-    ScreenQuad() {
+    ScreenQuad() {}
+
+    void init() {
         buffer = glutil::createScreenQuad();
     }
 

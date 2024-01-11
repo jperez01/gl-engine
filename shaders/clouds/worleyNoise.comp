@@ -1,0 +1,151 @@
+#version 430 core
+
+layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
+
+layout(std430, binding = 1) buffer worleyPointsBuffer {
+	vec3 worleyPoints[];
+};
+
+ ivec3 offsets[] =
+{
+    // centre
+    ivec3(0,0,0),
+
+    // front face
+    ivec3(0,0,1),
+    ivec3(-1,1,1),
+    ivec3(-1,0,1),
+    ivec3(-1,-1,1),
+    ivec3(0,1,1),
+    ivec3(0,-1,1),
+    ivec3(1,1,1),
+    ivec3(1,0,1),
+    ivec3(1,-1,1),
+
+    // back face
+    ivec3(0,0,-1),
+    ivec3(-1,1,-1),
+    ivec3(-1,0,-1),
+    ivec3(-1,-1,-1),
+    ivec3(0,1,-1),
+    ivec3(0,-1,-1),
+    ivec3(1,1,-1),
+    ivec3(1,0,-1),
+    ivec3(1,-1,-1),
+
+    // ring around centre
+    ivec3(-1,1,0),
+    ivec3(-1,0,0),
+    ivec3(-1,-1,0),
+    ivec3(0,1,0),
+    ivec3(0,-1,0),
+    ivec3(1,1,0),
+    ivec3(1,0,0),
+    ivec3(1,-1,0)
+};
+
+layout (RGBA8) uniform image3D worleyTexture;
+uniform vec3 worleyTextureSize;
+
+uniform int numCells;
+uniform int worleyPointsBufferSize;
+
+uniform float persistence = 1.0;
+uniform int chosenCell = 27;
+
+int minComponent(ivec3 v) {
+    return min(v.x, min(v.y, v.z));
+}
+
+int maxComponent(ivec3 v) {
+    return max(v.x, max(v.y, v.z));
+}
+
+float worley(vec3 samplePos, int type) {
+    float minSquaredDistance = dot(vec3(1.0), vec3(1.0));
+    ivec3 cellID = ivec3(samplePos * numCells);
+
+    for (int cellOffsetIndex = 0; cellOffsetIndex < chosenCell; cellOffsetIndex++) {
+	    ivec3 adjID = cellID + offsets[cellOffsetIndex];
+
+        // Adjacent cell is outside the map and needs to be wrapped around
+        if (minComponent(adjID) == -1 || maxComponent(adjID) == numCells) {
+            ivec3 wrappedID = (adjID + numCells) % numCells;
+            int adjCellIndex = wrappedID.x + numCells * (wrappedID.y + wrappedID.z * numCells);
+            vec3 wrappedPoint = worleyPoints[adjCellIndex + type * worleyPointsBufferSize];
+
+            for (int wrapOffsetIndex = 0; wrapOffsetIndex < 27; wrapOffsetIndex++) {
+                vec3 sampleOffset = (samplePos - (wrappedPoint + offsets[wrapOffsetIndex]));
+
+                minSquaredDistance = min(minSquaredDistance, dot(sampleOffset, sampleOffset));
+            }
+        } else {
+            int adjCellIndex = adjID.x + numCells * (adjID.y + adjID.z * numCells);
+            vec3 sampleOffset = samplePos - worleyPoints[adjCellIndex + type * worleyPointsBufferSize];
+
+            minSquaredDistance = min(minSquaredDistance, dot(sampleOffset, sampleOffset));
+        }
+    }
+
+    return sqrt(minSquaredDistance);
+}
+
+vec3 hash3D(vec3 x) 
+{
+    // based on: pcg3 by Mark Jarzynski: http://www.jcgt.org/published/0009/03/02/
+    uvec3 v = uvec3(x * 8192.0) * 1664525u + 1013904223u;
+    v += v.yzx * v.zxy;
+    v ^= v >> 16u;
+
+    v.x += v.y * v.z;
+    v.y += v.z * v.x;
+    v.z += v.x * v.y;
+    return vec3(v) * (1.0 / float(0xffffffffu));
+}
+
+float smoothWorley(vec3 samplePos, int type) {
+    vec3 convertedSamplePos = samplePos * numCells;
+    vec3 fracPart = fract(convertedSamplePos);
+    ivec3 intPart = ivec3(convertedSamplePos);
+
+    float result = 0.0;
+
+    for (int x = -1; x <= 1; x++) {
+        for (int y = -1; y <= 1; y++) {
+            for (int z = -1; z <= 1; z++) {
+                ivec3 b = ivec3(x, y, z);
+                vec3 val = vec3(b) - fracPart + hash3D(intPart + b);
+
+                result += 1.0 / pow(dot(val, val), 8.0);
+            }
+        }
+    }
+
+    return pow(1.0 / result, 1.0 / 16.0);
+}
+
+vec3 debug(vec3 samplePos) {
+    uvec3 cellID = uvec3(samplePos * numCells);
+
+    uint cellIndex = cellID.x + numCells * (cellID.y + cellID.z * numCells);
+    vec3 sampleOffset = samplePos - worleyPoints[cellIndex];
+
+    return vec3(sampleOffset);
+}
+
+void main() {
+	uvec3 textureCoords = gl_GlobalInvocationID;
+	vec3 samplePos = vec3(textureCoords) / worleyTextureSize;
+
+    float layerA = smoothWorley(samplePos, 0);
+    float layerB = smoothWorley(samplePos, 1);
+    float layerC = smoothWorley(samplePos, 2);
+
+    float noiseSum = layerA + (layerB * persistence) * (layerC * persistence * persistence);
+    float maxVal = 1.0 + persistence + (persistence * persistence);
+    noiseSum /= maxVal;
+
+    vec4 finalValue = vec4(vec3(1.0 - noiseSum), 1.0);
+
+	imageStore(worleyTexture, ivec3(textureCoords), finalValue);
+}

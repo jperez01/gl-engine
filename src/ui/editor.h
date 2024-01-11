@@ -21,6 +21,7 @@ public:
 	GLEngine* renderer = nullptr;
 	std::vector<Model> *objs = nullptr;
 	Mesh* chosenObj = nullptr;
+	Material* chosenMaterial = nullptr;
 
 private:
 };

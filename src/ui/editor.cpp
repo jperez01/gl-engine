@@ -55,6 +55,11 @@ void SceneEditor::render(Camera& camera)
 		ImGui::EndTabItem();
 	}
 
+	if (ImGui::BeginTabItem("Camera Options")) {
+		ImGui::SliderFloat("z Near", &camera.zNear, -50.0f, 100.0f);
+		ImGui::SliderFloat("z Far", &camera.zFar, 50.0f, 1000.0f);
+	}
+
 	if (ImGui::BeginTabItem("Stats")) {
 		ImGui::EndTabItem();
 	}
@@ -65,12 +70,42 @@ void SceneEditor::render(Camera& camera)
 	}
 	ImGui::End();
 
+	if (ImGui::Begin("Material Properties")) {
+		if (chosenMaterial != nullptr) {
+			if (ImGui::CollapsingHeader("Textures")) {
+				for (Texture& texture : chosenMaterial->textures) {
+					if (ImGui::BeginCombo(texture.type.c_str(), texture.path.c_str())) {
+						ImGui::EndCombo();
+					}
+				}
+			}
+			if (ImGui::CollapsingHeader("Ints")) {
+				for (auto& pair : chosenMaterial->uniformInts) {
+					ImGui::SliderInt(pair.first.c_str(), &pair.second, 0.0f, 1.0f);
+				}
+			}
+			if (ImGui::CollapsingHeader("Floats")) {
+				for (auto& pair : chosenMaterial->uniformFloats) {
+					ImGui::SliderFloat(pair.first.c_str(), &pair.second, 0.0f, 1.0f);
+				}
+			}
+			if (ImGui::CollapsingHeader("Vec3s")) {
+				for (auto& pair : chosenMaterial->uniformVec3s) {
+					ImGui::SliderFloat3(pair.first.c_str(), glm::value_ptr(pair.second), 0.0f, 1.0f);
+				}
+			}
+		}
+	}
+	ImGui::End();
+
 	if (ImGui::Begin("Gizmo")) {
 		if (chosenObj != nullptr) {
 			bool used = UI::manipulateMatrix(chosenObj->model_matrix, camera);
 		}
 	}
 	ImGui::End();
+
+	ImGui::ShowDemoWindow();
 }
 
 void SceneEditor::renderDebug(Camera& camera)
@@ -96,6 +131,7 @@ void SceneEditor::renderAsList(Model& model) {
 
 			if (ImGui::Selectable(itemId.c_str(), isSelected)) {
 				chosenObj = &model.meshes.at(i);
+				chosenMaterial = &model.materials_loaded[chosenObj->materialIndex];
 			}
 			ImGui::SameLine();
 			ImGui::Text("-");

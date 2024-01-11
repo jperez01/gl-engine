@@ -17,7 +17,8 @@ add_library(gl_tools
 
 add_executable(gl_engine
     main.cpp
-    engine/gl_engine.cpp)
+    engine/gl_engine.cpp
+    ${APP_ICON_RESOURCE_WINDOWS})
 
 add_executable(compute_engine
     exes/computeDemo.cpp
@@ -43,6 +44,10 @@ add_executable(indirect_rendering
     exes/indirectDemo.cpp
     engine/gl_indirect_eng.cpp)
 
+add_executable(cloud_rendering
+    exes/cloudDemo.cpp
+    engine/cloud_eng.cpp)
+
 target_include_directories(gl_tools PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${PROJECT_SOURCE_DIR}/include)
@@ -55,7 +60,6 @@ target_include_directories(gl_engine PUBLIC
 find_package(assimp CONFIG REQUIRED)
 # Assimp from source
 
-
 target_link_libraries(gl_tools PUBLIC glad glm stb_image imgui imGuizmo sdl2 assimp::assimp)
 
 target_link_libraries(gl_engine gl_tools)
@@ -65,3 +69,4 @@ target_link_libraries(pbr_engine gl_tools)
 target_link_libraries(clustered_engine gl_tools)
 target_link_libraries(voxel_cone_tracing gl_tools)
 target_link_libraries(indirect_rendering gl_tools)
+target_link_libraries(cloud_rendering gl_tools)

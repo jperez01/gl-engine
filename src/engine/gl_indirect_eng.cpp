@@ -80,7 +80,8 @@ void IndirectEngine::handleObjs(std::vector<Model>& objs)
 		packedVertices.insert(packedVertices.end(), mesh.vertices.begin(), mesh.vertices.end());
 		packedIndices.insert(packedIndices.end(), mesh.indices.begin(), mesh.indices.end());
 
-		for (Texture& texture : mesh.textures) {
+		Material& material = model.materials_loaded[mesh.materialIndex];
+		for (Texture& texture : material.textures) {
 			GLuint64 handle = glGetTextureHandleARB(texture.id);
 			glMakeTextureHandleResidentARB(handle);
 
@@ -90,7 +91,7 @@ void IndirectEngine::handleObjs(std::vector<Model>& objs)
 
 		currentVertex += mesh.vertices.size();
 		currentIndex += mesh.indices.size();
-		currentTexture += mesh.textures.size();
+		currentTexture += material.textures.size();
 	}
 
 	std::vector<VertexType> endpoints = { POSITION, NORMAL, TEXCOORDS, TANGENT, BI_TANGENT, VERTEX_ID };

@@ -160,7 +160,7 @@ void RenderEngine::render(std::vector<Model>& objs) {
     glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    glm::mat4 projection = glm::perspective(glm::radians(camera->Zoom), (float)WINDOW_WIDTH/ (float)WINDOW_HEIGHT, 0.1f, 100.0f);
+    glm::mat4 projection = camera->getProjectionMatrix();
     glm::mat4 view = camera->getViewMatrix();
 
     pipeline.use();
@@ -266,7 +266,6 @@ void RenderEngine::renderScene(std::vector<Model>& objs, Shader& shader, bool sk
 void RenderEngine::handleImGui() {
     ImGuiIO& io = ImGui::GetIO();
 
-    ImGui::Begin("Info");
     if (ImGui::CollapsingHeader("Point Lights")) {
         for (int i = 0; i < 4; i++) {
             std::string name = "Point Light " + std::to_string(i);
@@ -301,10 +300,6 @@ void RenderEngine::handleImGui() {
             operation = ImGuizmo::SCALE;
         }
     }
-    ImGui::End();
-
-    glm::mat4 projection = glm::perspective(glm::radians(camera->Zoom), (float)WINDOW_WIDTH/ (float)WINDOW_HEIGHT, 0.1f, 100.0f);
-    glm::mat4 view = camera->getViewMatrix();
 }
 
 void RenderEngine::drawCascadeVolumeVisualizers(const std::vector<glm::mat4>& lightMatrices, Shader* shader)

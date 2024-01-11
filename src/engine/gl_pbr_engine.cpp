@@ -327,7 +327,7 @@ void PBREngine::render(std::vector<Model> &objs) {
 
     for (unsigned int i = 0; i < sizeof(lightPositions) / sizeof(lightPositions[0]); ++i)
     {
-        glm::vec3 newPos = lightPositions[i] + glm::vec3(sin(glfwGetTime() * 5.0) * 5.0, 0.0, 0.0);
+        glm::vec3 newPos = lightPositions[i] + glm::vec3(sin(SDL_GetTicks() * 5.0) * 5.0, 0.0, 0.0);
         newPos = lightPositions[i];
         pipeline.setVec3("lights[" + std::to_string(i) + "].position", lightPositions[i]);
         pipeline.setVec3("lights[" + std::to_string(i) + "].color", lightColors[i]);
